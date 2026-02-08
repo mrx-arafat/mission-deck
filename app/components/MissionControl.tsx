@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Clock,
   Bot,
+  LogOut,
 } from 'lucide-react';
 import KanbanBoard from './KanbanBoard';
 
@@ -42,6 +43,17 @@ export default function MissionControl() {
             <Clock className="w-3.5 h-3.5" />
             <span>{time.toLocaleTimeString()}</span>
           </div>
+          <button
+            onClick={async () => {
+              await fetch('/api/auth/logout', { method: 'POST' });
+              window.location.href = '/login';
+            }}
+            className="flex items-center gap-1.5 border border-red-900/50 px-3 py-1 rounded bg-red-950/20 text-red-400 hover:bg-red-900/30 hover:border-red-700 transition-colors cursor-pointer"
+            title="Logout"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>EXIT</span>
+          </button>
         </div>
       </header>
 
