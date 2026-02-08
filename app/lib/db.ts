@@ -1,7 +1,13 @@
 import { neon } from '@neondatabase/serverless';
 
+function getDatabaseUrl(): string {
+  const url = process.env.DATABASE_URL || process.env.storage_DATABASE_URL || process.env.POSTGRES_URL || process.env.storage_POSTGRES_URL;
+  if (!url) throw new Error('No database URL found. Set DATABASE_URL or connect Vercel Postgres storage.');
+  return url;
+}
+
 export function getDb() {
-  return neon(process.env.DATABASE_URL!);
+  return neon(getDatabaseUrl());
 }
 
 export async function initializeDatabase() {
