@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus,
@@ -17,6 +17,7 @@ import {
   User,
   Filter,
   Search,
+  Loader2,
 } from 'lucide-react';
 
 // --- Types ---
@@ -101,20 +102,47 @@ const PRIORITY_CONFIG: Record<Priority, { label: string; color: string; dot: str
   low: { label: 'LOW', color: 'text-gray-400 border-gray-700 bg-gray-900/30', dot: 'bg-gray-500' },
 };
 
-const INITIAL_TASKS: KanbanTask[] = [
-  { id: 't1', title: 'Audit NGINX Config', description: 'Full security review of NGINX reverse proxy configuration', assignee: 'AXIS', priority: 'high', column: 'in-progress', tags: ['security', 'infra'], createdAt: Date.now() - 86400000, updatedAt: Date.now() },
-  { id: 't2', title: 'Scaffold MissionDeck UI', description: 'Build the initial dashboard layout and components', assignee: 'AXIS', priority: 'medium', column: 'done', tags: ['frontend'], createdAt: Date.now() - 172800000, updatedAt: Date.now() - 86400000 },
-  { id: 't3', title: 'Optimize Docker Containers', description: 'Reduce image sizes and optimize build layers', assignee: 'AXIS', priority: 'critical', column: 'todo', tags: ['devops', 'infra'], createdAt: Date.now() - 43200000, updatedAt: Date.now() - 43200000 },
-  { id: 't4', title: 'Update MEMORY.md', description: 'Document all recent architecture decisions', priority: 'low', column: 'backlog', tags: ['docs'], createdAt: Date.now() - 259200000, updatedAt: Date.now() - 259200000 },
-  { id: 't5', title: 'API Rate Limiter', description: 'Implement rate limiting middleware for all endpoints', assignee: 'AXIS', priority: 'high', column: 'review', tags: ['backend', 'security'], createdAt: Date.now() - 36000000, updatedAt: Date.now() - 3600000 },
-  { id: 't6', title: 'CI/CD Pipeline Refactor', description: 'Migrate from Jenkins to GitHub Actions', assignee: 'AXIS', priority: 'medium', column: 'in-progress', tags: ['devops'], createdAt: Date.now() - 50000000, updatedAt: Date.now() },
-  { id: 't7', title: 'WebSocket Gateway', description: 'Real-time event streaming for agent communication', priority: 'critical', column: 'todo', tags: ['backend', 'infra'], createdAt: Date.now() - 10000000, updatedAt: Date.now() - 10000000 },
-  { id: 't8', title: 'Dark Mode Persistence', description: 'Save theme preference to localStorage', assignee: 'AXIS', priority: 'low', column: 'done', tags: ['frontend'], createdAt: Date.now() - 300000000, updatedAt: Date.now() - 200000000 },
-];
+// --- API helpers ---
+async function fetchTasks(): Promise<KanbanTask[]> {
+  const res = await fetch('/api/tasks');
+  if (!res.ok) throw new Error('Failed to fetch tasks');
+  return res.json();
+}
+
+async function createTaskApi(task: Omit<KanbanTask, 'id' | 'createdAt' | 'updatedAt'>): Promise<KanbanTask> {
+  const res = await fetch('/api/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(task),
+  });
+  if (!res.ok) throw new Error('Failed to create task');
+  return res.json();
+}
+
+async function updateTaskApi(taskId: string, updates: Partial<KanbanTask>): Promise<KanbanTask> {
+  const res = await fetch(`/api/tasks/${taskId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error('Failed to update task');
+  return res.json();
+}
+
+async function deleteTaskApi(taskId: string): Promise<void> {
+  const res = await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete task');
+}
+
+async function seedTasks(): Promise<void> {
+  await fetch('/api/tasks/seed', { method: 'POST' });
+}
 
 // --- Component ---
 export default function KanbanBoard() {
-  const [tasks, setTasks] = useState<KanbanTask[]>(INITIAL_TASKS);
+  const [tasks, setTasks] = useState<KanbanTask[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<ColumnId | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -127,12 +155,30 @@ export default function KanbanBoard() {
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const dragCounter = useRef(0);
 
+  // --- Load tasks from DB ---
+  const loadTasks = useCallback(async () => {
+    try {
+      setError(null);
+      const data = await fetchTasks();
+      setTasks(data);
+    } catch (err) {
+      console.error('Failed to load tasks:', err);
+      setError('Failed to load tasks from database');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Seed initial data if empty, then fetch
+    seedTasks().then(() => loadTasks());
+  }, [loadTasks]);
+
   // --- Drag & Drop ---
   const handleDragStart = useCallback((e: React.DragEvent, taskId: string) => {
     setDraggedTask(taskId);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', taskId);
-    // Make the drag image slightly transparent
     if (e.currentTarget instanceof HTMLElement) {
       e.currentTarget.style.opacity = '0.5';
     }
@@ -170,41 +216,59 @@ export default function KanbanBoard() {
     e.preventDefault();
     const taskId = e.dataTransfer.getData('text/plain');
     if (taskId) {
+      // Optimistic update
       setTasks(prev =>
         prev.map(t =>
           t.id === taskId ? { ...t, column: columnId, updatedAt: Date.now() } : t
         )
       );
+      // Persist to DB
+      updateTaskApi(taskId, { column: columnId }).catch(err => {
+        console.error('Failed to update column:', err);
+        loadTasks(); // Revert on error
+      });
     }
     setDraggedTask(null);
     setDropTarget(null);
     dragCounter.current = 0;
-  }, []);
+  }, [loadTasks]);
 
   // --- CRUD ---
-  const addTask = useCallback((task: Omit<KanbanTask, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const newTask: KanbanTask = {
-      ...task,
-      id: `t${Date.now()}`,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    setTasks(prev => [...prev, newTask]);
+  const addTask = useCallback(async (task: Omit<KanbanTask, 'id' | 'createdAt' | 'updatedAt'>) => {
+    try {
+      const newTask = await createTaskApi(task);
+      setTasks(prev => [newTask, ...prev]);
+    } catch (err) {
+      console.error('Failed to add task:', err);
+      setError('Failed to create task');
+    }
   }, []);
 
   const updateTask = useCallback((taskId: string, updates: Partial<KanbanTask>) => {
+    // Optimistic update
     setTasks(prev =>
       prev.map(t =>
         t.id === taskId ? { ...t, ...updates, updatedAt: Date.now() } : t
       )
     );
-  }, []);
+    // Persist to DB
+    updateTaskApi(taskId, updates).catch(err => {
+      console.error('Failed to update task:', err);
+      loadTasks(); // Revert on error
+    });
+  }, [loadTasks]);
 
   const deleteTask = useCallback((taskId: string) => {
+    // Optimistic update
     setTasks(prev => prev.filter(t => t.id !== taskId));
     if (editingTask === taskId) setEditingTask(null);
     if (expandedTask === taskId) setExpandedTask(null);
-  }, [editingTask, expandedTask]);
+    // Persist to DB
+    deleteTaskApi(taskId).catch(err => {
+      console.error('Failed to delete task:', err);
+      loadTasks(); // Revert on error
+    });
+  }, [editingTask, expandedTask, loadTasks]);
 
   // --- Filtering ---
   const filteredTasks = tasks.filter(task => {
@@ -235,8 +299,28 @@ export default function KanbanBoard() {
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter(t => t.column === 'done').length;
 
+  // --- Loading state ---
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-500">
+        <Loader2 className="w-6 h-6 animate-spin text-cyan-500" />
+        <span className="text-xs tracking-wider">LOADING MISSIONS...</span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full">
+      {/* Error Banner */}
+      {error && (
+        <div className="mb-3 px-3 py-2 bg-red-950/30 border border-red-800 rounded text-xs text-red-400 flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => { setError(null); loadTasks(); }} className="text-red-300 hover:text-red-100 text-[10px] border border-red-800 px-2 py-0.5 rounded">
+            RETRY
+          </button>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
         <div className="flex items-center gap-3 flex-1 min-w-0">
