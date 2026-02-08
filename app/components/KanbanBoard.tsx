@@ -101,17 +101,15 @@ const PRIORITY_CONFIG: Record<Priority, { label: string; color: string; dot: str
   low: { label: 'LOW', color: 'text-gray-400 border-gray-700 bg-gray-900/30', dot: 'bg-gray-500' },
 };
 
-const AGENTS = ['AXIS', 'ORACLE', 'TANK', 'MORPHEUS', 'SHURI'];
-
 const INITIAL_TASKS: KanbanTask[] = [
   { id: 't1', title: 'Audit NGINX Config', description: 'Full security review of NGINX reverse proxy configuration', assignee: 'AXIS', priority: 'high', column: 'in-progress', tags: ['security', 'infra'], createdAt: Date.now() - 86400000, updatedAt: Date.now() },
-  { id: 't2', title: 'Scaffold MissionDeck UI', description: 'Build the initial dashboard layout and components', assignee: 'TANK', priority: 'medium', column: 'done', tags: ['frontend'], createdAt: Date.now() - 172800000, updatedAt: Date.now() - 86400000 },
+  { id: 't2', title: 'Scaffold MissionDeck UI', description: 'Build the initial dashboard layout and components', assignee: 'AXIS', priority: 'medium', column: 'done', tags: ['frontend'], createdAt: Date.now() - 172800000, updatedAt: Date.now() - 86400000 },
   { id: 't3', title: 'Optimize Docker Containers', description: 'Reduce image sizes and optimize build layers', assignee: 'AXIS', priority: 'critical', column: 'todo', tags: ['devops', 'infra'], createdAt: Date.now() - 43200000, updatedAt: Date.now() - 43200000 },
   { id: 't4', title: 'Update MEMORY.md', description: 'Document all recent architecture decisions', priority: 'low', column: 'backlog', tags: ['docs'], createdAt: Date.now() - 259200000, updatedAt: Date.now() - 259200000 },
-  { id: 't5', title: 'API Rate Limiter', description: 'Implement rate limiting middleware for all endpoints', assignee: 'MORPHEUS', priority: 'high', column: 'review', tags: ['backend', 'security'], createdAt: Date.now() - 36000000, updatedAt: Date.now() - 3600000 },
-  { id: 't6', title: 'CI/CD Pipeline Refactor', description: 'Migrate from Jenkins to GitHub Actions', assignee: 'ORACLE', priority: 'medium', column: 'in-progress', tags: ['devops'], createdAt: Date.now() - 50000000, updatedAt: Date.now() },
+  { id: 't5', title: 'API Rate Limiter', description: 'Implement rate limiting middleware for all endpoints', assignee: 'AXIS', priority: 'high', column: 'review', tags: ['backend', 'security'], createdAt: Date.now() - 36000000, updatedAt: Date.now() - 3600000 },
+  { id: 't6', title: 'CI/CD Pipeline Refactor', description: 'Migrate from Jenkins to GitHub Actions', assignee: 'AXIS', priority: 'medium', column: 'in-progress', tags: ['devops'], createdAt: Date.now() - 50000000, updatedAt: Date.now() },
   { id: 't7', title: 'WebSocket Gateway', description: 'Real-time event streaming for agent communication', priority: 'critical', column: 'todo', tags: ['backend', 'infra'], createdAt: Date.now() - 10000000, updatedAt: Date.now() - 10000000 },
-  { id: 't8', title: 'Dark Mode Persistence', description: 'Save theme preference to localStorage', assignee: 'SHURI', priority: 'low', column: 'done', tags: ['frontend'], createdAt: Date.now() - 300000000, updatedAt: Date.now() - 200000000 },
+  { id: 't8', title: 'Dark Mode Persistence', description: 'Save theme preference to localStorage', assignee: 'AXIS', priority: 'low', column: 'done', tags: ['frontend'], createdAt: Date.now() - 300000000, updatedAt: Date.now() - 200000000 },
 ];
 
 // --- Component ---
@@ -313,9 +311,7 @@ export default function KanbanBoard() {
                 className="bg-black border border-gray-700 rounded px-2 py-1 text-gray-300 text-xs focus:outline-none focus:border-cyan-700"
               >
                 <option value="all">All</option>
-                {AGENTS.map(a => (
-                  <option key={a} value={a}>{a}</option>
-                ))}
+                <option value="AXIS">AXIS</option>
                 <option value="">Unassigned</option>
               </select>
 
@@ -540,9 +536,7 @@ function TaskCard({
                   className="bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-[10px] text-gray-300 focus:outline-none flex-1"
                 >
                   <option value="">Unassigned</option>
-                  {AGENTS.map(a => (
-                    <option key={a} value={a}>{a}</option>
-                  ))}
+                  <option value="AXIS">AXIS</option>
                 </select>
               </div>
               <input
@@ -760,9 +754,7 @@ function AddTaskModal({ column, onAdd, onClose }: AddTaskModalProps) {
                 className="w-full bg-black border border-gray-800 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-cyan-700"
               >
                 <option value="">None</option>
-                {AGENTS.map(a => (
-                  <option key={a} value={a}>{a}</option>
-                ))}
+                <option value="AXIS">AXIS</option>
               </select>
             </div>
             <div>
