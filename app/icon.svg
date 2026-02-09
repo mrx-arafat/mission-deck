@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a0a0a"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#00f3ff"/>
+      <stop offset="100%" stop-color="#0080ff"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="32" height="32" rx="6" fill="url(#bg)"/>
+  <!-- Border glow -->
+  <rect width="32" height="32" rx="6" fill="none" stroke="#00f3ff" stroke-width="1" opacity="0.4"/>
+  <!-- Grid lines -->
+  <line x1="8" y1="4" x2="8" y2="28" stroke="#00f3ff" stroke-width="0.3" opacity="0.2"/>
+  <line x1="16" y1="4" x2="16" y2="28" stroke="#00f3ff" stroke-width="0.3" opacity="0.2"/>
+  <line x1="24" y1="4" x2="24" y2="28" stroke="#00f3ff" stroke-width="0.3" opacity="0.2"/>
+  <line x1="4" y1="8" x2="28" y2="8" stroke="#00f3ff" stroke-width="0.3" opacity="0.2"/>
+  <line x1="4" y1="16" x2="28" y2="16" stroke="#00f3ff" stroke-width="0.3" opacity="0.2"/>
+  <line x1="4" y1="24" x2="28" y2="24" stroke="#00f3ff" stroke-width="0.3" opacity="0.2"/>
+  <!-- M letter (stylized) -->
+  <path d="M7 24V10l5 7 5-7v14" fill="none" stroke="url(#glow)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- D letter (stylized) -->
+  <path d="M20 10h3c3.5 0 5 2.5 5 7s-1.5 7-5 7h-3z" fill="none" stroke="url(#glow)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Status dot -->
+  <circle cx="27" cy="6" r="2.5" fill="#0aff0a"/>
+  <circle cx="27" cy="6" r="2.5" fill="#0aff0a" opacity="0.5">
+    <animate attributeName="r" values="2.5;3.5;2.5" dur="2s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.5;0;0.5" dur="2s" repeatCount="indefinite"/>
+  </circle>
+</svg>
