@@ -11,6 +11,10 @@ import {
   Play,
   Pause,
   LogOut,
+  Database,
+  Loader2,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import { useMissionStore } from '../lib/store';
 import KanbanBoard from './KanbanBoard';
@@ -24,7 +28,7 @@ export default function MissionControl() {
   const [time, setTime] = useState(new Date());
   const [activePanel, setActivePanel] = useState<SidePanel>('chat');
   const [sidePanelOpen, setSidePanelOpen] = useState(true);
-  const { agents, simulationRunning, toggleSimulation, messages, statusUpdates } = useMissionStore();
+  const { agents, simulationRunning, toggleSimulation, messages, statusUpdates, loading, dbConnected } = useMissionStore();
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -54,6 +58,31 @@ export default function MissionControl() {
       badge: onlineAgents,
     },
   ];
+
+  // Loading screen
+  if (loading) {
+    return (
+      <div className="min-h-screen h-screen bg-black text-green-500 font-mono flex flex-col items-center justify-center relative overflow-hidden selection:bg-cyan-900 selection:text-cyan-100">
+        <div className="absolute inset-0 bg-grid opacity-20 pointer-events-none" />
+        <div className="scanline" />
+        <div className="relative z-10 flex flex-col items-center gap-6">
+          <div className="relative">
+            <Bot className="w-16 h-16 text-cyan-400 animate-pulse" />
+            <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-black animate-ping" />
+          </div>
+          <h1 className="text-2xl font-bold tracking-[0.3em] text-cyan-50 glow-text">MISSION DECK</h1>
+          <div className="flex items-center gap-3 text-sm text-green-400">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="tracking-wider">CONNECTING TO DATABASE...</span>
+          </div>
+          <div className="w-64 h-1 bg-gray-800 rounded-full overflow-hidden mt-2">
+            <div className="h-full bg-cyan-500 rounded-full animate-pulse" style={{ width: '60%' }} />
+          </div>
+          <p className="text-[10px] text-gray-600 tracking-[0.3em]">INITIALIZING MULTI-AGENT SYSTEMS</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen h-screen bg-black text-green-500 font-mono relative overflow-hidden selection:bg-cyan-900 selection:text-cyan-100 flex flex-col">
@@ -98,6 +127,30 @@ export default function MissionControl() {
           <div className="flex items-center gap-2 text-[10px]">
             <span className="text-green-400">{onlineAgents} ONLINE</span>
             <span className="text-yellow-400">{busyAgents} BUSY</span>
+          </div>
+
+          {/* DB Connection Status */}
+          <div
+            className={`flex items-center gap-1.5 text-[10px] border rounded px-2 py-1 ${
+              dbConnected
+                ? 'border-green-900/50 text-green-500 bg-green-950/20'
+                : 'border-red-900/50 text-red-400 bg-red-950/20 animate-pulse'
+            }`}
+            title={dbConnected ? 'Database connected and syncing' : 'Database disconnected'}
+          >
+            {dbConnected ? (
+              <>
+                <Database className="w-3 h-3" />
+                <Wifi className="w-3 h-3" />
+                <span>DB SYNCED</span>
+              </>
+            ) : (
+              <>
+                <Database className="w-3 h-3" />
+                <WifiOff className="w-3 h-3" />
+                <span>OFFLINE</span>
+              </>
+            )}
           </div>
 
           {/* Simulation Toggle */}
