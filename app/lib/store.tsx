@@ -10,317 +10,23 @@ import type {
   ColumnId,
 } from './types';
 
-// === Initial Agents ===
-const INITIAL_AGENTS: Agent[] = [
-  {
-    id: 'axis',
-    name: 'AXIS',
-    role: 'general',
-    status: 'online',
-    avatar: '🤖',
-    currentTaskId: null,
-    skills: ['coordination', 'planning', 'monitoring'],
-    completedTasks: 12,
-    lastActive: Date.now(),
-  },
-  {
-    id: 'nova',
-    name: 'NOVA',
-    role: 'frontend',
-    status: 'online',
-    avatar: '🎨',
-    currentTaskId: null,
-    skills: ['react', 'css', 'ui-design', 'accessibility'],
-    completedTasks: 8,
-    lastActive: Date.now(),
-  },
-  {
-    id: 'cipher',
-    name: 'CIPHER',
-    role: 'security',
-    status: 'busy',
-    avatar: '🔒',
-    currentTaskId: null,
-    skills: ['pen-testing', 'audit', 'encryption', 'auth'],
-    completedTasks: 15,
-    lastActive: Date.now(),
-  },
-  {
-    id: 'forge',
-    name: 'FORGE',
-    role: 'backend',
-    status: 'idle',
-    avatar: '⚡',
-    currentTaskId: null,
-    skills: ['api', 'database', 'microservices', 'websockets'],
-    completedTasks: 10,
-    lastActive: Date.now(),
-  },
-  {
-    id: 'sentinel',
-    name: 'SENTINEL',
-    role: 'devops',
-    status: 'online',
-    avatar: '🛡️',
-    currentTaskId: null,
-    skills: ['docker', 'ci-cd', 'kubernetes', 'monitoring'],
-    completedTasks: 7,
-    lastActive: Date.now(),
-  },
-];
-
-// === Initial Tasks ===
-const INITIAL_TASKS: KanbanTask[] = [
-  {
-    id: 't1',
-    title: 'Audit NGINX Config',
-    description: 'Full security review of NGINX reverse proxy configuration',
-    assignee: 'cipher',
-    priority: 'high',
-    column: 'in-progress',
-    tags: ['security', 'infra'],
-    createdAt: Date.now() - 86400000,
-    updatedAt: Date.now(),
-    claimedBy: 'cipher',
-    claimedAt: Date.now() - 3600000,
-    lockedBy: 'cipher',
-    worklog: [
-      { agentId: 'cipher', action: 'claimed', timestamp: Date.now() - 3600000 },
-      { agentId: 'cipher', action: 'started audit', timestamp: Date.now() - 3000000, detail: 'Scanning headers and SSL config' },
-    ],
-  },
-  {
-    id: 't2',
-    title: 'Scaffold MissionDeck UI',
-    description: 'Build the initial dashboard layout and components',
-    assignee: 'nova',
-    priority: 'medium',
-    column: 'done',
-    tags: ['frontend'],
-    createdAt: Date.now() - 172800000,
-    updatedAt: Date.now() - 86400000,
-    claimedBy: 'nova',
-    worklog: [
-      { agentId: 'nova', action: 'completed', timestamp: Date.now() - 86400000 },
-    ],
-  },
-  {
-    id: 't3',
-    title: 'Optimize Docker Containers',
-    description: 'Reduce image sizes and optimize build layers',
-    priority: 'critical',
-    column: 'todo',
-    tags: ['devops', 'infra'],
-    createdAt: Date.now() - 43200000,
-    updatedAt: Date.now() - 43200000,
-  },
-  {
-    id: 't4',
-    title: 'Update MEMORY.md',
-    description: 'Document all recent architecture decisions',
-    priority: 'low',
-    column: 'backlog',
-    tags: ['docs'],
-    createdAt: Date.now() - 259200000,
-    updatedAt: Date.now() - 259200000,
-  },
-  {
-    id: 't5',
-    title: 'API Rate Limiter',
-    description: 'Implement rate limiting middleware for all endpoints',
-    assignee: 'forge',
-    priority: 'high',
-    column: 'review',
-    tags: ['backend', 'security'],
-    createdAt: Date.now() - 36000000,
-    updatedAt: Date.now() - 3600000,
-    claimedBy: 'forge',
-    handoffFrom: 'forge',
-    handoffTo: 'cipher',
-    handoffNote: 'Ready for security review',
-    isHandoff: true,
-    worklog: [
-      { agentId: 'forge', action: 'claimed', timestamp: Date.now() - 36000000 },
-      { agentId: 'forge', action: 'implemented', timestamp: Date.now() - 7200000, detail: 'Token bucket algorithm with Redis backing' },
-      { agentId: 'forge', action: 'handoff to CIPHER', timestamp: Date.now() - 3600000, detail: 'Ready for security review' },
-    ],
-  },
-  {
-    id: 't6',
-    title: 'CI/CD Pipeline Refactor',
-    description: 'Migrate from Jenkins to GitHub Actions',
-    assignee: 'sentinel',
-    priority: 'medium',
-    column: 'in-progress',
-    tags: ['devops'],
-    createdAt: Date.now() - 50000000,
-    updatedAt: Date.now(),
-    claimedBy: 'sentinel',
-    lockedBy: 'sentinel',
-    worklog: [
-      { agentId: 'sentinel', action: 'claimed', timestamp: Date.now() - 50000000 },
-      { agentId: 'sentinel', action: 'in progress', timestamp: Date.now() - 10000000, detail: 'Writing workflow YAML configs' },
-    ],
-  },
-  {
-    id: 't7',
-    title: 'WebSocket Gateway',
-    description: 'Real-time event streaming for agent communication',
-    priority: 'critical',
-    column: 'todo',
-    tags: ['backend', 'infra'],
-    createdAt: Date.now() - 10000000,
-    updatedAt: Date.now() - 10000000,
-  },
-  {
-    id: 't8',
-    title: 'Dark Mode Persistence',
-    description: 'Save theme preference to localStorage',
-    assignee: 'nova',
-    priority: 'low',
-    column: 'done',
-    tags: ['frontend'],
-    createdAt: Date.now() - 300000000,
-    updatedAt: Date.now() - 200000000,
-    claimedBy: 'nova',
-    worklog: [
-      { agentId: 'nova', action: 'completed', timestamp: Date.now() - 200000000 },
-    ],
-  },
-];
-
-// === Initial Chat Messages ===
-const INITIAL_MESSAGES: ChatMessage[] = [
-  {
-    id: 'm1',
-    senderId: 'axis',
-    senderName: 'AXIS',
-    content: 'Good morning team. Sprint 4 is active. Priority targets: Docker optimization and WebSocket gateway.',
-    timestamp: Date.now() - 7200000,
-    channel: 'general',
-    type: 'message',
-  },
-  {
-    id: 'm2',
-    senderId: 'cipher',
-    senderName: 'CIPHER',
-    content: 'Starting NGINX audit now. Found 3 potential header misconfigurations already.',
-    timestamp: Date.now() - 3600000,
-    channel: 'general',
-    type: 'message',
-    taskRef: 't1',
-  },
-  {
-    id: 'm3',
-    senderId: 'forge',
-    senderName: 'FORGE',
-    content: 'Rate limiter is ready for review. @CIPHER can you take a look at the security aspects?',
-    timestamp: Date.now() - 1800000,
-    channel: 'general',
-    type: 'handoff',
-    taskRef: 't5',
-    mentions: ['cipher'],
-  },
-  {
-    id: 'm4',
-    senderId: 'cipher',
-    senderName: 'CIPHER',
-    content: 'On it. Will review after the NGINX audit wraps up.',
-    timestamp: Date.now() - 1700000,
-    channel: 'general',
-    type: 'message',
-  },
-  {
-    id: 'm5',
-    senderId: 'sentinel',
-    senderName: 'SENTINEL',
-    content: 'CI/CD migration at 60%. GitHub Actions workflow for the main branch is live. Working on staging next.',
-    timestamp: Date.now() - 900000,
-    channel: 'general',
-    type: 'message',
-    taskRef: 't6',
-  },
-  {
-    id: 'm6',
-    senderId: 'nova',
-    senderName: 'NOVA',
-    content: 'Dashboard scaffold is complete! Ready to help with any frontend tasks.',
-    timestamp: Date.now() - 600000,
-    channel: 'general',
-    type: 'status',
-  },
-  {
-    id: 'm7',
-    senderId: 'system',
-    senderName: 'SYSTEM',
-    content: 'FORGE handed off "API Rate Limiter" to CIPHER for security review.',
-    timestamp: Date.now() - 1800000,
-    channel: 'general',
-    type: 'system',
-    taskRef: 't5',
-  },
-];
-
-// === Initial Status Updates ===
-const INITIAL_UPDATES: StatusUpdate[] = [
-  {
-    id: 'u1',
-    agentId: 'cipher',
-    agentName: 'CIPHER',
-    type: 'claim',
-    message: 'Claimed "Audit NGINX Config"',
-    timestamp: Date.now() - 3600000,
-    taskId: 't1',
-    taskTitle: 'Audit NGINX Config',
-  },
-  {
-    id: 'u2',
-    agentId: 'sentinel',
-    agentName: 'SENTINEL',
-    type: 'progress',
-    message: 'CI/CD Pipeline at 60% — staging workflow next',
-    timestamp: Date.now() - 900000,
-    taskId: 't6',
-    taskTitle: 'CI/CD Pipeline Refactor',
-  },
-  {
-    id: 'u3',
-    agentId: 'forge',
-    agentName: 'FORGE',
-    type: 'handoff',
-    message: 'Handed off "API Rate Limiter" to CIPHER',
-    timestamp: Date.now() - 1800000,
-    taskId: 't5',
-    taskTitle: 'API Rate Limiter',
-  },
-  {
-    id: 'u4',
-    agentId: 'nova',
-    agentName: 'NOVA',
-    type: 'complete',
-    message: 'Completed "Scaffold MissionDeck UI"',
-    timestamp: Date.now() - 86400000,
-    taskId: 't2',
-    taskTitle: 'Scaffold MissionDeck UI',
-  },
-  {
-    id: 'u5',
-    agentId: 'axis',
-    agentName: 'AXIS',
-    type: 'online',
-    message: 'All agents online. Sprint 4 initiated.',
-    timestamp: Date.now() - 7200000,
-  },
-];
+// === API Helper ===
+async function api<T>(url: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+  return res.json();
+}
 
 // === Store Context ===
 interface MissionStore {
-  // Agents
+  // State
   agents: Agent[];
   getAgent: (id: string) => Agent | undefined;
   updateAgentStatus: (agentId: string, status: AgentStatus) => void;
 
-  // Tasks
   tasks: KanbanTask[];
   addTask: (task: Omit<KanbanTask, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateTask: (taskId: string, updates: Partial<KanbanTask>) => void;
@@ -330,17 +36,18 @@ interface MissionStore {
   unclaimTask: (taskId: string) => void;
   handoffTask: (taskId: string, fromId: string, toId: string, note: string) => void;
 
-  // Chat
   messages: ChatMessage[];
   sendMessage: (msg: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
 
-  // Status Updates
   statusUpdates: StatusUpdate[];
   addStatusUpdate: (update: Omit<StatusUpdate, 'id' | 'timestamp'>) => void;
 
-  // Simulation
   simulationRunning: boolean;
   toggleSimulation: () => void;
+
+  // DB status
+  loading: boolean;
+  dbConnected: boolean;
 }
 
 const MissionContext = createContext<MissionStore | null>(null);
@@ -360,20 +67,21 @@ function useAgentSimulation(
   addStatusUpdate: (update: Omit<StatusUpdate, 'id' | 'timestamp'>) => void,
   updateAgentStatus: (agentId: string, status: AgentStatus) => void,
   moveTask: (taskId: string, column: ColumnId) => void,
-  running: boolean
+  running: boolean,
+  dbReady: boolean
 ) {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastActionRef = useRef<number>(0);
 
   useEffect(() => {
-    if (!running) {
+    if (!running || !dbReady) {
       if (intervalRef.current) clearInterval(intervalRef.current);
       return;
     }
 
     intervalRef.current = setInterval(() => {
       const now = Date.now();
-      if (now - lastActionRef.current < 8000) return; // min 8s between actions
+      if (now - lastActionRef.current < 12000) return; // min 12s between actions
       lastActionRef.current = now;
 
       const action = Math.random();
@@ -384,7 +92,6 @@ function useAgentSimulation(
         const unclaimedTasks = tasks.filter(t => !t.claimedBy && (t.column === 'todo' || t.column === 'backlog'));
         if (idleAgents.length > 0 && unclaimedTasks.length > 0) {
           const agent = idleAgents[Math.floor(Math.random() * idleAgents.length)];
-          // Pick a task that matches agent skills
           const matchingTask = unclaimedTasks.find(t =>
             t.tags.some(tag => agent.skills.some(s => s.includes(tag) || tag.includes(s)))
           ) || unclaimedTasks[0];
@@ -500,21 +207,84 @@ function useAgentSimulation(
           type: 'message',
         });
       }
-    }, 5000);
+    }, 6000);
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [running, agents, tasks, claimTask, sendMessage, addStatusUpdate, updateAgentStatus, moveTask]);
+  }, [running, dbReady, agents, tasks, claimTask, sendMessage, addStatusUpdate, updateAgentStatus, moveTask]);
 }
 
 // === Provider ===
 export function MissionProvider({ children }: { children: React.ReactNode }) {
-  const [agents, setAgents] = useState<Agent[]>(INITIAL_AGENTS);
-  const [tasks, setTasks] = useState<KanbanTask[]>(INITIAL_TASKS);
-  const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
-  const [statusUpdates, setStatusUpdates] = useState<StatusUpdate[]>(INITIAL_UPDATES);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [tasks, setTasks] = useState<KanbanTask[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [statusUpdates, setStatusUpdates] = useState<StatusUpdate[]>([]);
   const [simulationRunning, setSimulationRunning] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [dbConnected, setDbConnected] = useState(false);
+  const pollRef = useRef<NodeJS.Timeout | null>(null);
+
+  // === Initial data fetch ===
+  useEffect(() => {
+    async function init() {
+      try {
+        // Run setup first (creates tables if needed, seeds if empty)
+        await fetch('/api/setup');
+
+        // Fetch all data in parallel
+        const [agentsData, tasksData, messagesData, statusData] = await Promise.all([
+          api<Agent[]>('/api/agents'),
+          api<KanbanTask[]>('/api/tasks'),
+          api<ChatMessage[]>('/api/messages?channel=general&limit=100'),
+          api<StatusUpdate[]>('/api/status?limit=50'),
+        ]);
+
+        setAgents(agentsData);
+        setTasks(tasksData);
+        setMessages(messagesData);
+        setStatusUpdates(statusData);
+        setDbConnected(true);
+      } catch (err) {
+        console.error('Failed to initialize from DB:', err);
+        setDbConnected(false);
+      } finally {
+        setLoading(false);
+      }
+    }
+    init();
+  }, []);
+
+  // === Polling (every 3 seconds) ===
+  useEffect(() => {
+    if (!dbConnected) return;
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const [agentsData, tasksData, messagesData, statusData] = await Promise.all([
+          api<Agent[]>('/api/agents'),
+          api<KanbanTask[]>('/api/tasks'),
+          api<ChatMessage[]>('/api/messages?channel=general&limit=100'),
+          api<StatusUpdate[]>('/api/status?limit=50'),
+        ]);
+
+        setAgents(agentsData);
+        setTasks(tasksData);
+        setMessages(messagesData);
+        setStatusUpdates(statusData);
+        setDbConnected(true);
+      } catch {
+        setDbConnected(false);
+      }
+    }, 3000);
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [dbConnected]);
+
+  // === Mutation Functions (all hit API + optimistic local update) ===
 
   const getAgent = useCallback(
     (id: string) => agents.find(a => a.id === id),
@@ -522,66 +292,100 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
   );
 
   const updateAgentStatus = useCallback((agentId: string, status: AgentStatus) => {
+    // Optimistic
     setAgents(prev =>
       prev.map(a => (a.id === agentId ? { ...a, status, lastActive: Date.now() } : a))
     );
+    // Persist
+    fetch(`/api/agents/${agentId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    }).catch(console.error);
   }, []);
 
   const addTask = useCallback((task: Omit<KanbanTask, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const newTask: KanbanTask = {
-      ...task,
-      id: `t${Date.now()}`,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    setTasks(prev => [...prev, newTask]);
+    // Persist and let polling pick it up
+    fetch('/api/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(task),
+    })
+      .then(res => res.json())
+      .then((saved: KanbanTask) => {
+        setTasks(prev => [...prev, saved]);
+      })
+      .catch(console.error);
   }, []);
 
   const updateTask = useCallback((taskId: string, updates: Partial<KanbanTask>) => {
+    // Optimistic
     setTasks(prev =>
       prev.map(t => (t.id === taskId ? { ...t, ...updates, updatedAt: Date.now() } : t))
     );
+    // Persist
+    fetch(`/api/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    }).catch(console.error);
   }, []);
 
   const deleteTask = useCallback((taskId: string) => {
+    // Optimistic
     setTasks(prev => prev.filter(t => t.id !== taskId));
+    // Persist
+    fetch(`/api/tasks/${taskId}`, { method: 'DELETE' }).catch(console.error);
   }, []);
 
   const moveTask = useCallback((taskId: string, column: ColumnId) => {
+    // Optimistic
     setTasks(prev =>
       prev.map(t => (t.id === taskId ? { ...t, column, updatedAt: Date.now() } : t))
     );
+    // Persist
+    fetch(`/api/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ column }),
+    }).catch(console.error);
   }, []);
 
   const claimTask = useCallback((taskId: string, agentId: string) => {
+    const now = Date.now();
+    // Optimistic
     setTasks(prev =>
       prev.map(t =>
         t.id === taskId
           ? {
               ...t,
               claimedBy: agentId,
-              claimedAt: Date.now(),
+              claimedAt: now,
               assignee: agentId,
               lockedBy: agentId,
               column: t.column === 'backlog' || t.column === 'todo' ? 'in-progress' : t.column,
-              updatedAt: Date.now(),
-              worklog: [
-                ...(t.worklog || []),
-                { agentId, action: 'claimed', timestamp: Date.now() },
-              ],
+              updatedAt: now,
+              worklog: [...(t.worklog || []), { agentId, action: 'claimed', timestamp: now }],
             }
           : t
       )
     );
     setAgents(prev =>
       prev.map(a =>
-        a.id === agentId ? { ...a, currentTaskId: taskId, status: 'busy', lastActive: Date.now() } : a
+        a.id === agentId ? { ...a, currentTaskId: taskId, status: 'busy', lastActive: now } : a
       )
     );
+    // Persist
+    fetch(`/api/tasks/${taskId}/claim`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId }),
+    }).catch(console.error);
   }, []);
 
   const unclaimTask = useCallback((taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
+    // Optimistic
     if (task?.claimedBy) {
       setAgents(prev =>
         prev.map(a =>
@@ -596,10 +400,14 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
           : t
       )
     );
+    // Persist
+    fetch(`/api/tasks/${taskId}/unclaim`, { method: 'POST' }).catch(console.error);
   }, [tasks]);
 
   const handoffTask = useCallback(
     (taskId: string, fromId: string, toId: string, note: string) => {
+      const now = Date.now();
+      // Optimistic
       setTasks(prev =>
         prev.map(t =>
           t.id === taskId
@@ -612,55 +420,65 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
                 assignee: toId,
                 claimedBy: toId,
                 lockedBy: toId,
-                updatedAt: Date.now(),
+                updatedAt: now,
                 worklog: [
                   ...(t.worklog || []),
-                  {
-                    agentId: fromId,
-                    action: `handoff to ${toId}`,
-                    timestamp: Date.now(),
-                    detail: note,
-                  },
+                  { agentId: fromId, action: `handoff to ${toId}`, timestamp: now, detail: note },
                 ],
               }
             : t
         )
       );
-      // Free the original agent
       setAgents(prev =>
         prev.map(a => {
-          if (a.id === fromId) return { ...a, currentTaskId: null, status: 'online', lastActive: Date.now() };
-          if (a.id === toId) return { ...a, currentTaskId: taskId, status: 'busy', lastActive: Date.now() };
+          if (a.id === fromId) return { ...a, currentTaskId: null, status: 'online', lastActive: now };
+          if (a.id === toId) return { ...a, currentTaskId: taskId, status: 'busy', lastActive: now };
           return a;
         })
       );
+      // Persist
+      fetch(`/api/tasks/${taskId}/handoff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fromId, toId, note }),
+      }).catch(console.error);
     },
     []
   );
 
   const sendMessage = useCallback((msg: Omit<ChatMessage, 'id' | 'timestamp'>) => {
-    const newMsg: ChatMessage = {
-      ...msg,
-      id: `m${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      timestamp: Date.now(),
-    };
+    const now = Date.now();
+    const tempId = `m-${now}-${Math.random().toString(36).slice(2, 6)}`;
+    // Optimistic
+    const newMsg: ChatMessage = { ...msg, id: tempId, timestamp: now };
     setMessages(prev => [...prev, newMsg]);
+    // Persist
+    fetch('/api/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(msg),
+    }).catch(console.error);
   }, []);
 
   const addStatusUpdate = useCallback((update: Omit<StatusUpdate, 'id' | 'timestamp'>) => {
-    const newUpdate: StatusUpdate = {
-      ...update,
-      id: `u${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      timestamp: Date.now(),
-    };
+    const now = Date.now();
+    const tempId = `u-${now}-${Math.random().toString(36).slice(2, 6)}`;
+    // Optimistic
+    const newUpdate: StatusUpdate = { ...update, id: tempId, timestamp: now };
     setStatusUpdates(prev => [...prev, newUpdate]);
+    // Persist
+    fetch('/api/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(update),
+    }).catch(console.error);
   }, []);
 
   const toggleSimulation = useCallback(() => {
     setSimulationRunning(prev => !prev);
   }, []);
 
-  // Run simulation
+  // Run simulation (now DB-backed)
   useAgentSimulation(
     agents,
     tasks,
@@ -669,7 +487,8 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
     addStatusUpdate,
     updateAgentStatus,
     moveTask,
-    simulationRunning
+    simulationRunning,
+    dbConnected
   );
 
   const store: MissionStore = {
@@ -690,6 +509,8 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
     addStatusUpdate,
     simulationRunning,
     toggleSimulation,
+    loading,
+    dbConnected,
   };
 
   return <MissionContext.Provider value={store}>{children}</MissionContext.Provider>;
