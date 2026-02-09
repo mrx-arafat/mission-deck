@@ -1,5 +1,13 @@
 import { sql } from './db';
 
+export async function resetSchema() {
+  await sql`DROP TABLE IF EXISTS worklog CASCADE`;
+  await sql`DROP TABLE IF EXISTS messages CASCADE`;
+  await sql`DROP TABLE IF EXISTS status_updates CASCADE`;
+  await sql`DROP TABLE IF EXISTS tasks CASCADE`;
+  await sql`DROP TABLE IF EXISTS agents CASCADE`;
+}
+
 export async function ensureSchema() {
   await sql`
     CREATE TABLE IF NOT EXISTS agents (
