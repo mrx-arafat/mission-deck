@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus,
@@ -17,41 +17,19 @@ import {
   User,
   Filter,
   Search,
-  Loader2,
+  ArrowRightLeft,
+  Lock,
 } from 'lucide-react';
-
-// --- Types ---
-export type Priority = 'critical' | 'high' | 'medium' | 'low';
-export type ColumnId = 'backlog' | 'todo' | 'in-progress' | 'review' | 'done';
-
-export interface KanbanTask {
-  id: string;
-  title: string;
-  description?: string;
-  assignee?: string;
-  priority: Priority;
-  column: ColumnId;
-  tags: string[];
-  createdAt: number;
-  updatedAt: number;
-}
-
-interface Column {
-  id: ColumnId;
-  title: string;
-  icon: React.ReactNode;
-  color: string;
-  borderColor: string;
-  bgColor: string;
-  countBg: string;
-}
+import { useMissionStore } from '../lib/store';
+import HandoffModal from './HandoffModal';
+import type { Priority, ColumnId, KanbanTask, Column } from '../lib/types';
 
 // --- Constants ---
 const COLUMNS: Column[] = [
   {
     id: 'backlog',
     title: 'BACKLOG',
-    icon: <Clock className="w-4 h-4" />,
+    iconName: 'Clock',
     color: 'text-gray-400',
     borderColor: 'border-gray-700',
     bgColor: 'bg-gray-900/20',
@@ -60,7 +38,7 @@ const COLUMNS: Column[] = [
   {
     id: 'todo',
     title: 'QUEUED',
-    icon: <Zap className="w-4 h-4" />,
+    iconName: 'Zap',
     color: 'text-yellow-400',
     borderColor: 'border-yellow-900/50',
     bgColor: 'bg-yellow-950/10',
@@ -69,7 +47,7 @@ const COLUMNS: Column[] = [
   {
     id: 'in-progress',
     title: 'ACTIVE',
-    icon: <ArrowRight className="w-4 h-4" />,
+    iconName: 'ArrowRight',
     color: 'text-cyan-400',
     borderColor: 'border-cyan-900/50',
     bgColor: 'bg-cyan-950/10',
@@ -78,7 +56,7 @@ const COLUMNS: Column[] = [
   {
     id: 'review',
     title: 'REVIEW',
-    icon: <AlertTriangle className="w-4 h-4" />,
+    iconName: 'AlertTriangle',
     color: 'text-purple-400',
     borderColor: 'border-purple-900/50',
     bgColor: 'bg-purple-950/10',
@@ -87,13 +65,21 @@ const COLUMNS: Column[] = [
   {
     id: 'done',
     title: 'COMPLETE',
-    icon: <CheckCircle2 className="w-4 h-4" />,
+    iconName: 'CheckCircle2',
     color: 'text-green-400',
     borderColor: 'border-green-900/50',
     bgColor: 'bg-green-950/10',
     countBg: 'bg-green-900/30 text-green-400',
   },
 ];
+
+const COLUMN_ICONS: Record<string, React.ReactNode> = {
+  Clock: <Clock className="w-4 h-4" />,
+  Zap: <Zap className="w-4 h-4" />,
+  ArrowRight: <ArrowRight className="w-4 h-4" />,
+  AlertTriangle: <AlertTriangle className="w-4 h-4" />,
+  CheckCircle2: <CheckCircle2 className="w-4 h-4" />,
+};
 
 const PRIORITY_CONFIG: Record<Priority, { label: string; color: string; dot: string }> = {
   critical: { label: 'CRITICAL', color: 'text-red-400 border-red-800 bg-red-950/30', dot: 'bg-red-500' },
@@ -102,47 +88,19 @@ const PRIORITY_CONFIG: Record<Priority, { label: string; color: string; dot: str
   low: { label: 'LOW', color: 'text-gray-400 border-gray-700 bg-gray-900/30', dot: 'bg-gray-500' },
 };
 
-// --- API helpers ---
-async function fetchTasks(): Promise<KanbanTask[]> {
-  const res = await fetch('/api/tasks');
-  if (!res.ok) throw new Error('Failed to fetch tasks');
-  return res.json();
-}
-
-async function createTaskApi(task: Omit<KanbanTask, 'id' | 'createdAt' | 'updatedAt'>): Promise<KanbanTask> {
-  const res = await fetch('/api/tasks', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(task),
-  });
-  if (!res.ok) throw new Error('Failed to create task');
-  return res.json();
-}
-
-async function updateTaskApi(taskId: string, updates: Partial<KanbanTask>): Promise<KanbanTask> {
-  const res = await fetch(`/api/tasks/${taskId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
-  if (!res.ok) throw new Error('Failed to update task');
-  return res.json();
-}
-
-async function deleteTaskApi(taskId: string): Promise<void> {
-  const res = await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error('Failed to delete task');
-}
-
-async function seedTasks(): Promise<void> {
-  await fetch('/api/tasks/seed', { method: 'POST' });
-}
-
 // --- Component ---
 export default function KanbanBoard() {
-  const [tasks, setTasks] = useState<KanbanTask[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    tasks,
+    agents,
+    addTask,
+    updateTask,
+    deleteTask,
+    moveTask,
+    sendMessage,
+    addStatusUpdate,
+  } = useMissionStore();
+
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<ColumnId | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -153,36 +111,23 @@ export default function KanbanBoard() {
   const [filterAssignee, setFilterAssignee] = useState<string | 'all'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
+  const [handoffTask, setHandoffTask] = useState<KanbanTask | null>(null);
   const dragCounter = useRef(0);
-
-  // --- Load tasks from DB ---
-  const loadTasks = useCallback(async () => {
-    try {
-      setError(null);
-      const data = await fetchTasks();
-      setTasks(data);
-    } catch (err) {
-      console.error('Failed to load tasks:', err);
-      setError('Failed to load tasks from database');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    // Seed initial data if empty, then fetch
-    seedTasks().then(() => loadTasks());
-  }, [loadTasks]);
 
   // --- Drag & Drop ---
   const handleDragStart = useCallback((e: React.DragEvent, taskId: string) => {
+    // Check if task is locked by another agent
+    const task = tasks.find(t => t.id === taskId);
+    if (task?.lockedBy) {
+      // Still allow drag but will show locked state
+    }
     setDraggedTask(taskId);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', taskId);
     if (e.currentTarget instanceof HTMLElement) {
       e.currentTarget.style.opacity = '0.5';
     }
-  }, []);
+  }, [tasks]);
 
   const handleDragEnd = useCallback((e: React.DragEvent) => {
     setDraggedTask(null);
@@ -216,68 +161,22 @@ export default function KanbanBoard() {
     e.preventDefault();
     const taskId = e.dataTransfer.getData('text/plain');
     if (taskId) {
-      // Optimistic update
-      setTasks(prev =>
-        prev.map(t =>
-          t.id === taskId ? { ...t, column: columnId, updatedAt: Date.now() } : t
-        )
-      );
-      // Persist to DB
-      updateTaskApi(taskId, { column: columnId }).catch(err => {
-        console.error('Failed to update column:', err);
-        loadTasks(); // Revert on error
-      });
+      moveTask(taskId, columnId);
     }
     setDraggedTask(null);
     setDropTarget(null);
     dragCounter.current = 0;
-  }, [loadTasks]);
-
-  // --- CRUD ---
-  const addTask = useCallback(async (task: Omit<KanbanTask, 'id' | 'createdAt' | 'updatedAt'>) => {
-    try {
-      const newTask = await createTaskApi(task);
-      setTasks(prev => [newTask, ...prev]);
-    } catch (err) {
-      console.error('Failed to add task:', err);
-      setError('Failed to create task');
-    }
-  }, []);
-
-  const updateTask = useCallback((taskId: string, updates: Partial<KanbanTask>) => {
-    // Optimistic update
-    setTasks(prev =>
-      prev.map(t =>
-        t.id === taskId ? { ...t, ...updates, updatedAt: Date.now() } : t
-      )
-    );
-    // Persist to DB
-    updateTaskApi(taskId, updates).catch(err => {
-      console.error('Failed to update task:', err);
-      loadTasks(); // Revert on error
-    });
-  }, [loadTasks]);
-
-  const deleteTask = useCallback((taskId: string) => {
-    // Optimistic update
-    setTasks(prev => prev.filter(t => t.id !== taskId));
-    if (editingTask === taskId) setEditingTask(null);
-    if (expandedTask === taskId) setExpandedTask(null);
-    // Persist to DB
-    deleteTaskApi(taskId).catch(err => {
-      console.error('Failed to delete task:', err);
-      loadTasks(); // Revert on error
-    });
-  }, [editingTask, expandedTask, loadTasks]);
+  }, [moveTask]);
 
   // --- Filtering ---
   const filteredTasks = tasks.filter(task => {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
+      const agentName = agents.find(a => a.id === task.assignee)?.name || '';
       if (
         !task.title.toLowerCase().includes(q) &&
         !task.description?.toLowerCase().includes(q) &&
-        !task.assignee?.toLowerCase().includes(q) &&
+        !agentName.toLowerCase().includes(q) &&
         !task.tags.some(t => t.toLowerCase().includes(q))
       ) {
         return false;
@@ -299,28 +198,32 @@ export default function KanbanBoard() {
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter(t => t.column === 'done').length;
 
-  // --- Loading state ---
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-500">
-        <Loader2 className="w-6 h-6 animate-spin text-cyan-500" />
-        <span className="text-xs tracking-wider">LOADING MISSIONS...</span>
-      </div>
-    );
-  }
+  // Claim handler for human
+  const handleHumanClaim = (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    // Human claims it by setting assignee to 'human'
+    updateTask(taskId, { assignee: 'human', claimedBy: 'human', lockedBy: 'human' });
+    sendMessage({
+      senderId: 'human',
+      senderName: 'YOU',
+      content: `I'm taking over "${task.title}".`,
+      channel: 'general',
+      type: 'claim',
+      taskRef: taskId,
+    });
+    addStatusUpdate({
+      agentId: 'human',
+      agentName: 'Human Operator',
+      type: 'claim',
+      message: `Human claimed "${task.title}"`,
+      taskId,
+      taskTitle: task.title,
+    });
+  };
 
   return (
     <div className="flex flex-col h-full">
-      {/* Error Banner */}
-      {error && (
-        <div className="mb-3 px-3 py-2 bg-red-950/30 border border-red-800 rounded text-xs text-red-400 flex items-center justify-between">
-          <span>{error}</span>
-          <button onClick={() => { setError(null); loadTasks(); }} className="text-red-300 hover:text-red-100 text-[10px] border border-red-800 px-2 py-0.5 rounded">
-            RETRY
-          </button>
-        </div>
-      )}
-
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -395,7 +298,12 @@ export default function KanbanBoard() {
                 className="bg-black border border-gray-700 rounded px-2 py-1 text-gray-300 text-xs focus:outline-none focus:border-cyan-700"
               >
                 <option value="all">All</option>
-                <option value="AXIS">AXIS</option>
+                {agents.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.avatar} {a.name}
+                  </option>
+                ))}
+                <option value="human">👤 Human</option>
                 <option value="">Unassigned</option>
               </select>
 
@@ -436,7 +344,7 @@ export default function KanbanBoard() {
               {/* Column Header */}
               <div className={`flex items-center justify-between px-3 py-2.5 border-b ${column.borderColor} bg-black/30 rounded-t-lg`}>
                 <div className={`flex items-center gap-2 ${column.color}`}>
-                  {column.icon}
+                  {COLUMN_ICONS[column.iconName]}
                   <span className="text-[11px] font-bold tracking-wider">{column.title}</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -472,6 +380,8 @@ export default function KanbanBoard() {
                       onExpand={() => setExpandedTask(expandedTask === task.id ? null : task.id)}
                       onUpdate={updateTask}
                       onDelete={deleteTask}
+                      onHandoff={() => setHandoffTask(task)}
+                      onHumanClaim={() => handleHumanClaim(task.id)}
                     />
                   ))}
                 </AnimatePresence>
@@ -502,6 +412,13 @@ export default function KanbanBoard() {
           />
         )}
       </AnimatePresence>
+
+      {/* Handoff Modal */}
+      <AnimatePresence>
+        {handoffTask && (
+          <HandoffModal task={handoffTask} onClose={() => setHandoffTask(null)} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -518,6 +435,8 @@ interface TaskCardProps {
   onExpand: () => void;
   onUpdate: (id: string, updates: Partial<KanbanTask>) => void;
   onDelete: (id: string) => void;
+  onHandoff: () => void;
+  onHumanClaim: () => void;
 }
 
 function TaskCard({
@@ -531,7 +450,10 @@ function TaskCard({
   onExpand,
   onUpdate,
   onDelete,
+  onHandoff,
+  onHumanClaim,
 }: TaskCardProps) {
+  const { agents } = useMissionStore();
   const [editTitle, setEditTitle] = useState(task.title);
   const [editDescription, setEditDescription] = useState(task.description || '');
   const [editPriority, setEditPriority] = useState(task.priority);
@@ -539,6 +461,9 @@ function TaskCard({
   const [editTags, setEditTags] = useState(task.tags.join(', '));
 
   const pri = PRIORITY_CONFIG[task.priority];
+  const assigneeAgent = agents.find(a => a.id === task.assignee);
+  const claimedAgent = agents.find(a => a.id === task.claimedBy);
+  const isLocked = !!task.lockedBy;
 
   const saveEdit = () => {
     onUpdate(task.id, {
@@ -569,171 +494,257 @@ function TaskCard({
       onDragStart={e => onDragStart(e, task.id)}
       onDragEnd={onDragEnd}
     >
-    <motion.div
-      layout
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: isDragging ? 0.5 : 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      transition={{ duration: 0.15 }}
-      className={`group relative bg-black/50 border border-gray-800 rounded-md p-2.5 cursor-grab active:cursor-grabbing hover:border-gray-700 transition-all ${
-        isExpanded ? 'ring-1 ring-cyan-900/50' : ''
-      }`}
-    >
-      {/* Drag Handle + Priority Dot */}
-      <div className="flex items-start gap-2">
-        <div className="flex flex-col items-center gap-1 pt-0.5">
-          <GripVertical className="w-3 h-3 text-gray-700 group-hover:text-gray-500" />
-          <div className={`w-2 h-2 rounded-full ${pri.dot}`} title={pri.label} />
-        </div>
+      <motion.div
+        layout
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: isDragging ? 0.5 : 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        transition={{ duration: 0.15 }}
+        className={`group relative bg-black/50 border rounded-md p-2.5 cursor-grab active:cursor-grabbing hover:border-gray-700 transition-all ${
+          isExpanded ? 'ring-1 ring-cyan-900/50' : ''
+        } ${
+          task.isHandoff
+            ? 'border-purple-800/50'
+            : isLocked
+            ? 'border-yellow-900/30'
+            : 'border-gray-800'
+        }`}
+      >
+        {/* Lock indicator */}
+        {isLocked && (
+          <div className="absolute -top-1.5 -right-1.5 bg-yellow-900/80 rounded-full p-0.5" title={`Locked by ${claimedAgent?.name || task.lockedBy}`}>
+            <Lock className="w-2.5 h-2.5 text-yellow-400" />
+          </div>
+        )}
 
-        <div className="flex-1 min-w-0">
-          {isEditing ? (
-            /* Edit Mode */
-            <div className="space-y-2">
-              <input
-                value={editTitle}
-                onChange={e => setEditTitle(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-cyan-700"
-                autoFocus
-              />
-              <textarea
-                value={editDescription}
-                onChange={e => setEditDescription(e.target.value)}
-                rows={2}
-                placeholder="Description..."
-                className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-cyan-700 resize-none"
-              />
-              <div className="flex gap-2">
-                <select
-                  value={editPriority}
-                  onChange={e => setEditPriority(e.target.value as Priority)}
-                  className="bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-[10px] text-gray-300 focus:outline-none"
-                >
-                  <option value="critical">Critical</option>
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-                <select
-                  value={editAssignee}
-                  onChange={e => setEditAssignee(e.target.value)}
-                  className="bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-[10px] text-gray-300 focus:outline-none flex-1"
-                >
-                  <option value="">Unassigned</option>
-                  <option value="AXIS">AXIS</option>
-                </select>
-              </div>
-              <input
-                value={editTags}
-                onChange={e => setEditTags(e.target.value)}
-                placeholder="Tags (comma separated)"
-                className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-[10px] text-gray-300 focus:outline-none focus:border-cyan-700"
-              />
-              <div className="flex justify-end gap-1.5">
-                <button
-                  onClick={resetEdit}
-                  className="text-[10px] px-2 py-1 border border-gray-700 rounded text-gray-400 hover:text-gray-200 hover:border-gray-600"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-                <button
-                  onClick={saveEdit}
-                  className="text-[10px] px-2 py-1 border border-cyan-800 rounded text-cyan-400 hover:text-cyan-200 hover:border-cyan-600 bg-cyan-950/20"
-                >
-                  <Check className="w-3 h-3" />
-                </button>
-              </div>
-            </div>
-          ) : (
-            /* View Mode */
-            <>
-              <div
-                className="text-xs font-medium text-gray-200 leading-snug cursor-pointer hover:text-cyan-300 transition-colors"
-                onClick={onExpand}
-              >
-                {task.title}
-              </div>
+        {/* Handoff badge */}
+        {task.isHandoff && (
+          <div className="absolute -top-1.5 -left-1.5 bg-purple-900/80 rounded-full p-0.5" title="Pending handoff">
+            <ArrowRightLeft className="w-2.5 h-2.5 text-purple-400" />
+          </div>
+        )}
 
-              {/* Expanded Details */}
-              <AnimatePresence>
-                {isExpanded && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden"
+        {/* Drag Handle + Priority Dot */}
+        <div className="flex items-start gap-2">
+          <div className="flex flex-col items-center gap-1 pt-0.5">
+            <GripVertical className="w-3 h-3 text-gray-700 group-hover:text-gray-500" />
+            <div className={`w-2 h-2 rounded-full ${pri.dot}`} title={pri.label} />
+          </div>
+
+          <div className="flex-1 min-w-0">
+            {isEditing ? (
+              /* Edit Mode */
+              <div className="space-y-2">
+                <input
+                  value={editTitle}
+                  onChange={e => setEditTitle(e.target.value)}
+                  className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-cyan-700"
+                  autoFocus
+                />
+                <textarea
+                  value={editDescription}
+                  onChange={e => setEditDescription(e.target.value)}
+                  rows={2}
+                  placeholder="Description..."
+                  className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-cyan-700 resize-none"
+                />
+                <div className="flex gap-2">
+                  <select
+                    value={editPriority}
+                    onChange={e => setEditPriority(e.target.value as Priority)}
+                    className="bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-[10px] text-gray-300 focus:outline-none"
                   >
-                    {task.description && (
-                      <p className="text-[10px] text-gray-500 mt-1.5 leading-relaxed">
-                        {task.description}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-1.5 mt-2 text-[9px] text-gray-600">
-                      <span>Created {new Date(task.createdAt).toLocaleDateString()}</span>
-                      <span>|</span>
-                      <span>Updated {new Date(task.updatedAt).toLocaleDateString()}</span>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                  </select>
+                  <select
+                    value={editAssignee}
+                    onChange={e => setEditAssignee(e.target.value)}
+                    className="bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-[10px] text-gray-300 focus:outline-none flex-1"
+                  >
+                    <option value="">Unassigned</option>
+                    {agents.map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.avatar} {a.name}
+                      </option>
+                    ))}
+                    <option value="human">👤 Human</option>
+                  </select>
+                </div>
+                <input
+                  value={editTags}
+                  onChange={e => setEditTags(e.target.value)}
+                  placeholder="Tags (comma separated)"
+                  className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-[10px] text-gray-300 focus:outline-none focus:border-cyan-700"
+                />
+                <div className="flex justify-end gap-1.5">
+                  <button
+                    onClick={resetEdit}
+                    className="text-[10px] px-2 py-1 border border-gray-700 rounded text-gray-400 hover:text-gray-200 hover:border-gray-600"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={saveEdit}
+                    className="text-[10px] px-2 py-1 border border-cyan-800 rounded text-cyan-400 hover:text-cyan-200 hover:border-cyan-600 bg-cyan-950/20"
+                  >
+                    <Check className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* View Mode */
+              <>
+                <div
+                  className="text-xs font-medium text-gray-200 leading-snug cursor-pointer hover:text-cyan-300 transition-colors"
+                  onClick={onExpand}
+                >
+                  {task.title}
+                </div>
 
-              {/* Tags */}
-              {task.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-1.5">
-                  {task.tags.map(tag => (
-                    <span
-                      key={tag}
-                      className="text-[9px] px-1.5 py-0.5 rounded bg-gray-800/50 text-gray-500 border border-gray-800"
+                {/* Expanded Details */}
+                <AnimatePresence>
+                  {isExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
                     >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              )}
+                      {task.description && (
+                        <p className="text-[10px] text-gray-500 mt-1.5 leading-relaxed">
+                          {task.description}
+                        </p>
+                      )}
 
-              {/* Footer */}
-              <div className="flex items-center justify-between mt-2">
-                <div className="flex items-center gap-1.5">
-                  {task.assignee && (
-                    <span className="text-[10px] text-cyan-600 flex items-center gap-1">
-                      <User className="w-2.5 h-2.5" />
-                      {task.assignee}
-                    </span>
+                      {/* Handoff info */}
+                      {task.isHandoff && (
+                        <div className="mt-1.5 p-1.5 bg-purple-950/20 border border-purple-900/30 rounded text-[9px]">
+                          <span className="text-purple-400 font-bold">HANDOFF: </span>
+                          <span className="text-gray-400">
+                            {agents.find(a => a.id === task.handoffFrom)?.name || task.handoffFrom} →{' '}
+                            {task.handoffTo === 'human' ? 'Human' : agents.find(a => a.id === task.handoffTo)?.name || task.handoffTo}
+                          </span>
+                          {task.handoffNote && (
+                            <p className="text-gray-500 mt-0.5">{task.handoffNote}</p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Worklog */}
+                      {task.worklog && task.worklog.length > 0 && (
+                        <div className="mt-1.5 space-y-0.5">
+                          <span className="text-[8px] text-gray-600 uppercase">Activity</span>
+                          {task.worklog.slice(-3).map((entry, i) => (
+                            <div key={i} className="flex items-center gap-1 text-[8px] text-gray-600">
+                              <span>{agents.find(a => a.id === entry.agentId)?.avatar || '👤'}</span>
+                              <span>{entry.action}</span>
+                              <span className="text-gray-700">
+                                {new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-1.5 mt-2 text-[9px] text-gray-600">
+                        <span>Created {new Date(task.createdAt).toLocaleDateString()}</span>
+                        <span>|</span>
+                        <span>Updated {new Date(task.updatedAt).toLocaleDateString()}</span>
+                      </div>
+
+                      {/* Claim button for unclaimed tasks */}
+                      {!task.claimedBy && (
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            onHumanClaim();
+                          }}
+                          className="mt-2 w-full text-[10px] py-1 border border-cyan-800 rounded text-cyan-400 hover:bg-cyan-950/20 transition-colors"
+                        >
+                          CLAIM TASK
+                        </button>
+                      )}
+                    </motion.div>
                   )}
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded border ${pri.color}`}>
-                    {pri.label}
-                  </span>
-                </div>
+                </AnimatePresence>
 
-                {/* Actions (visible on hover) */}
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={e => {
-                      e.stopPropagation();
-                      onEdit();
-                    }}
-                    className="text-gray-600 hover:text-cyan-400 transition-colors p-0.5"
-                    title="Edit"
-                  >
-                    <Edit3 className="w-3 h-3" />
-                  </button>
-                  <button
-                    onClick={e => {
-                      e.stopPropagation();
-                      onDelete(task.id);
-                    }}
-                    className="text-gray-600 hover:text-red-400 transition-colors p-0.5"
-                    title="Delete"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+                {/* Tags */}
+                {task.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {task.tags.map(tag => (
+                      <span
+                        key={tag}
+                        className="text-[9px] px-1.5 py-0.5 rounded bg-gray-800/50 text-gray-500 border border-gray-800"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Footer */}
+                <div className="flex items-center justify-between mt-2">
+                  <div className="flex items-center gap-1.5">
+                    {assigneeAgent ? (
+                      <span className="text-[10px] text-cyan-600 flex items-center gap-1">
+                        <span className="text-xs">{assigneeAgent.avatar}</span>
+                        {assigneeAgent.name}
+                      </span>
+                    ) : task.assignee === 'human' ? (
+                      <span className="text-[10px] text-violet-500 flex items-center gap-1">
+                        <User className="w-2.5 h-2.5" />
+                        YOU
+                      </span>
+                    ) : null}
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded border ${pri.color}`}>
+                      {pri.label}
+                    </span>
+                  </div>
+
+                  {/* Actions (visible on hover) */}
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {task.claimedBy && (
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          onHandoff();
+                        }}
+                        className="text-gray-600 hover:text-purple-400 transition-colors p-0.5"
+                        title="Handoff"
+                      >
+                        <ArrowRightLeft className="w-3 h-3" />
+                      </button>
+                    )}
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        onEdit();
+                      }}
+                      className="text-gray-600 hover:text-cyan-400 transition-colors p-0.5"
+                      title="Edit"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        onDelete(task.id);
+                      }}
+                      className="text-gray-600 hover:text-red-400 transition-colors p-0.5"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </>
-          )}
+              </>
+            )}
+          </div>
         </div>
-      </div>
-    </motion.div>
+      </motion.div>
     </div>
   );
 }
@@ -746,6 +757,7 @@ interface AddTaskModalProps {
 }
 
 function AddTaskModal({ column, onAdd, onClose }: AddTaskModalProps) {
+  const { agents } = useMissionStore();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<Priority>('medium');
@@ -838,7 +850,12 @@ function AddTaskModal({ column, onAdd, onClose }: AddTaskModalProps) {
                 className="w-full bg-black border border-gray-800 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-cyan-700"
               >
                 <option value="">None</option>
-                <option value="AXIS">AXIS</option>
+                {agents.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.avatar} {a.name}
+                  </option>
+                ))}
+                <option value="human">👤 Human</option>
               </select>
             </div>
             <div>

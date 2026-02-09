@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AXIS Mission Control - Kanban Dashboard",
-  description: "AI Agent Kanban Operations Dashboard for AXIS",
+  title: "Mission Deck - Multi-Agent Command Center",
+  description: "Multi-Agent AI Operations Dashboard with real-time task coordination",
 };
 
 export default function RootLayout({
