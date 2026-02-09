@@ -47,12 +47,14 @@ async function verifySessionToken(token: string, secret: string): Promise<{ user
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow login page and auth API routes through
+  // Allow login page, auth API, setup endpoint, and static assets through
   if (
     pathname.startsWith('/login') ||
     pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/setup') ||
     pathname.startsWith('/_next') ||
-    pathname.startsWith('/favicon')
+    pathname.startsWith('/favicon') ||
+    pathname === '/icon.svg'
   ) {
     return NextResponse.next();
   }
