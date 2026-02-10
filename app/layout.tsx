@@ -16,6 +16,13 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "AXIS Mission Control - Kanban Dashboard",
   description: "AI Agent Kanban Operations Dashboard for AXIS",
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: '32x32' },
+      { url: '/icon.svg', type: 'image/svg+xml' },
+    ],
+    apple: '/apple-icon.png',
+  },
 };
 
 export default function RootLayout({
