@@ -12,11 +12,11 @@ export default function Home() {
 
   useEffect(() => {
     if (!loading && !agent) {
-      router.push('/login');
+      router.replace('/login');
     }
   }, [loading, agent, router]);
 
-  if (loading) {
+  if (loading || !agent) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center font-mono">
         <div className="flex flex-col items-center gap-4">
@@ -26,10 +26,6 @@ export default function Home() {
         </div>
       </div>
     );
-  }
-
-  if (!agent) {
-    return null;
   }
 
   return <MissionControl />;

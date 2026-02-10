@@ -1,43 +1,43 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bot, Shield, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { useAuth } from '../components/AuthProvider';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { agent, login } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // If already authenticated, redirect to dashboard
+  useEffect(() => {
+    if (agent) {
+      router.replace('/');
+    }
+  }, [agent, router]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
+    const result = await login(username, password);
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || 'Login failed');
-        setLoading(false);
-        return;
-      }
-
-      router.push('/');
-      router.refresh();
-    } catch {
-      setError('Network error. Please try again.');
+    if (!result.success) {
+      setError(result.error || 'Login failed');
       setLoading(false);
+      return;
     }
+
+    // login() sets agent in AuthContext, which triggers the useEffect above
+    // to redirect to /. We keep loading=true so the button stays in loading state
+    // until navigation completes.
+    router.replace('/');
   }
 
   return (

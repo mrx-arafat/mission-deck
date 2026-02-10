@@ -70,6 +70,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Ignore errors
     }
     setAgent(null);
+    // Force a clean navigation to login page
+    window.location.href = '/login';
   }, []);
 
   const register = useCallback(async (username: string, password: string, name: string, role?: string) => {
