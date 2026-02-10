@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Clock,
   Bot,
@@ -10,22 +10,108 @@ import {
   Shield,
   UserPlus,
   Loader2,
+  GripVertical,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import KanbanBoard from './KanbanBoard';
 import ChatPanel from './ChatPanel';
 import { useAuth } from './AuthProvider';
 
+const CHAT_MIN_WIDTH = 280;
+const CHAT_MAX_WIDTH = 600;
+const CHAT_DEFAULT_WIDTH = 360;
+const STORAGE_KEY = 'mission-deck-chat-width';
+
+function getStoredWidth(): number {
+  if (typeof window === 'undefined') return CHAT_DEFAULT_WIDTH;
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored) {
+    const val = parseInt(stored, 10);
+    if (!isNaN(val) && val >= CHAT_MIN_WIDTH && val <= CHAT_MAX_WIDTH) return val;
+  }
+  return CHAT_DEFAULT_WIDTH;
+}
+
 export default function MissionControl() {
   const { agent, logout, register } = useAuth();
   const [time, setTime] = useState(new Date());
   const [chatOpen, setChatOpen] = useState(true);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [chatWidth, setChatWidth] = useState(CHAT_DEFAULT_WIDTH);
+  const [isResizing, setIsResizing] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
+  // Hydrate stored width + detect mobile
+  useEffect(() => {
+    setChatWidth(getStoredWidth());
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Clock
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Drag resize handlers
+  const handleResizeStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    resizeRef.current = { startX: clientX, startWidth: chatWidth };
+    setIsResizing(true);
+  }, [chatWidth]);
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMove = (e: MouseEvent | TouchEvent) => {
+      if (!resizeRef.current) return;
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      // Dragging left = increase chat width (panel is on the right)
+      const delta = resizeRef.current.startX - clientX;
+      const newWidth = Math.min(
+        CHAT_MAX_WIDTH,
+        Math.max(CHAT_MIN_WIDTH, resizeRef.current.startWidth + delta)
+      );
+      setChatWidth(newWidth);
+    };
+
+    const handleEnd = () => {
+      setIsResizing(false);
+      resizeRef.current = null;
+      // Persist
+      localStorage.setItem(STORAGE_KEY, String(chatWidth));
+    };
+
+    document.addEventListener('mousemove', handleMove);
+    document.addEventListener('mouseup', handleEnd);
+    document.addEventListener('touchmove', handleMove);
+    document.addEventListener('touchend', handleEnd);
+
+    // Prevent text selection while dragging
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      document.removeEventListener('mousemove', handleMove);
+      document.removeEventListener('mouseup', handleEnd);
+      document.removeEventListener('touchmove', handleMove);
+      document.removeEventListener('touchend', handleEnd);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing, chatWidth]);
+
+  // Persist width on change (debounced via resize end)
+  useEffect(() => {
+    if (!isResizing) {
+      localStorage.setItem(STORAGE_KEY, String(chatWidth));
+    }
+  }, [chatWidth, isResizing]);
 
   const isAdmin = agent?.role === 'admin';
 
@@ -36,23 +122,23 @@ export default function MissionControl() {
       <div className="scanline" />
 
       {/* --- HEADER --- */}
-      <header className="border-b border-green-900/50 bg-black/80 backdrop-blur-md px-5 py-3 flex justify-between items-center sticky top-0 z-10 shrink-0">
+      <header className="border-b border-green-900/50 bg-black/80 backdrop-blur-md px-3 md:px-5 py-3 flex justify-between items-center sticky top-0 z-10 shrink-0">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <Bot className="w-8 h-8 text-cyan-400" />
+            <Bot className="w-7 h-7 md:w-8 md:h-8 text-cyan-400" />
             <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border border-black animate-pulse" />
           </div>
-          <div>
+          <div className="hidden sm:block">
             <h1 className="text-xl font-bold tracking-[0.3em] text-cyan-50 glow-text">AXIS</h1>
             <p className="text-[10px] text-green-600 tracking-[0.4em]">MISSION CONTROL</p>
           </div>
         </div>
-        <div className="flex items-center gap-4 text-xs">
+        <div className="flex items-center gap-2 md:gap-4 text-xs">
           {/* Current Agent Info */}
           {agent && (
-            <div className="flex items-center gap-2 border border-green-900/30 px-3 py-1 rounded bg-green-950/10">
+            <div className="flex items-center gap-2 border border-green-900/30 px-2 md:px-3 py-1 rounded bg-green-950/10">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-green-400">{agent.name}</span>
+              <span className="text-green-400 hidden sm:inline">{agent.name}</span>
               {isAdmin && <Shield className="w-3 h-3 text-yellow-600" />}
             </div>
           )}
@@ -60,21 +146,21 @@ export default function MissionControl() {
           {/* Chat Toggle */}
           <button
             onClick={() => setChatOpen(!chatOpen)}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded border transition-all ${
+            className={`flex items-center gap-1.5 px-2 md:px-3 py-1 rounded border transition-all ${
               chatOpen
                 ? 'border-cyan-700 text-cyan-400 bg-cyan-950/20'
                 : 'border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700'
             }`}
           >
             <MessageSquare className="w-3.5 h-3.5" />
-            CHAT
+            <span className="hidden sm:inline">CHAT</span>
           </button>
 
           {/* Admin: Register Agent */}
           {isAdmin && (
             <button
               onClick={() => setShowRegisterModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1 rounded border border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700 transition-all"
+              className="flex items-center gap-1.5 px-2 md:px-3 py-1 rounded border border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700 transition-all"
               title="Register new agent"
             >
               <UserPlus className="w-3.5 h-3.5" />
@@ -82,7 +168,7 @@ export default function MissionControl() {
           )}
 
           {/* Clock */}
-          <div className="flex items-center gap-2 border border-green-900/50 px-3 py-1 rounded bg-green-950/20">
+          <div className="hidden md:flex items-center gap-2 border border-green-900/50 px-3 py-1 rounded bg-green-950/20">
             <Clock className="w-3.5 h-3.5" />
             <span>{time.toLocaleTimeString()}</span>
           </div>
@@ -90,7 +176,7 @@ export default function MissionControl() {
           {/* Logout */}
           <button
             onClick={logout}
-            className="flex items-center gap-1.5 px-3 py-1 rounded border border-red-900/30 text-red-700 hover:text-red-400 hover:border-red-700/50 transition-all"
+            className="flex items-center gap-1.5 px-2 md:px-3 py-1 rounded border border-red-900/30 text-red-700 hover:text-red-400 hover:border-red-700/50 transition-all"
             title="Logout"
           >
             <LogOut className="w-3.5 h-3.5" />
@@ -101,24 +187,62 @@ export default function MissionControl() {
       {/* --- MAIN LAYOUT --- */}
       <div className="flex-1 flex overflow-hidden relative z-0">
         {/* Kanban Board */}
-        <main className="flex-1 flex flex-col overflow-hidden p-4">
+        <main className="flex-1 flex flex-col overflow-hidden p-2 md:p-4">
           <KanbanBoard />
         </main>
 
-        {/* Chat Panel */}
-        <AnimatePresence>
-          {chatOpen && (
-            <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 360, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
+        {/* --- DESKTOP: Side panel with resize handle --- */}
+        {!isMobile && chatOpen && (
+          <>
+            {/* Resize Handle */}
+            <div
+              onMouseDown={handleResizeStart}
+              onTouchStart={handleResizeStart}
+              className={`shrink-0 w-2 cursor-col-resize flex items-center justify-center group hover:bg-cyan-900/20 transition-colors z-10 ${
+                isResizing ? 'bg-cyan-900/30' : ''
+              }`}
+              title="Drag to resize"
+            >
+              <div className={`w-0.5 h-10 rounded-full transition-colors ${
+                isResizing ? 'bg-cyan-500' : 'bg-gray-700 group-hover:bg-cyan-600'
+              }`} />
+            </div>
+
+            {/* Chat Panel */}
+            <div
               className="shrink-0 overflow-hidden relative"
+              style={{ width: chatWidth }}
             >
               <ChatPanel />
-            </motion.div>
-          )}
-        </AnimatePresence>
+            </div>
+          </>
+        )}
+
+        {/* --- MOBILE: Full-screen overlay --- */}
+        {isMobile && (
+          <AnimatePresence>
+            {chatOpen && (
+              <motion.div
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                className="absolute inset-0 z-20 bg-black"
+              >
+                {/* Mobile chat close button */}
+                <div className="absolute top-2 right-2 z-30">
+                  <button
+                    onClick={() => setChatOpen(false)}
+                    className="p-2 rounded-full bg-gray-900 border border-gray-700 text-gray-400 hover:text-white transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <ChatPanel />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        )}
       </div>
 
       {/* Register Agent Modal (Admin) */}
@@ -171,7 +295,7 @@ function RegisterAgentModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <motion.div

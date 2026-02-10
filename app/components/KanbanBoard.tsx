@@ -310,8 +310,8 @@ export default function KanbanBoard() {
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
+      <div className="flex items-center justify-between gap-2 md:gap-3 mb-3 md:mb-4 flex-wrap">
+        <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
           {/* Search */}
           <div className="relative flex-1 max-w-xs">
             <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-gray-500" />
@@ -327,14 +327,14 @@ export default function KanbanBoard() {
           {/* Filter Toggle */}
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-1.5 text-xs border rounded px-2.5 py-1.5 transition-all ${
+            className={`flex items-center gap-1.5 text-xs border rounded px-2 md:px-2.5 py-1.5 transition-all shrink-0 ${
               showFilters || filterPriority !== 'all' || filterAssignee !== 'all'
                 ? 'border-cyan-700 text-cyan-400 bg-cyan-950/20'
                 : 'border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700'
             }`}
           >
             <Filter className="w-3.5 h-3.5" />
-            FILTER
+            <span className="hidden sm:inline">FILTER</span>
             {(filterPriority !== 'all' || filterAssignee !== 'all') && (
               <span className="ml-1 bg-cyan-800/50 text-cyan-300 px-1.5 rounded text-[10px]">ON</span>
             )}
@@ -342,9 +342,9 @@ export default function KanbanBoard() {
         </div>
 
         {/* Stats */}
-        <div className="flex items-center gap-3 text-[10px] text-gray-500">
+        <div className="flex items-center gap-2 md:gap-3 text-[10px] text-gray-500 shrink-0">
           <span>{completedTasks}/{totalTasks} COMPLETE</span>
-          <div className="w-20 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+          <div className="w-16 md:w-20 h-1.5 bg-gray-800 rounded-full overflow-hidden">
             <div
               className="h-full bg-green-500/70 transition-all duration-500 rounded-full"
               style={{ width: `${totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0}%` }}
@@ -362,7 +362,7 @@ export default function KanbanBoard() {
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden mb-3"
           >
-            <div className="flex items-center gap-3 p-2.5 bg-gray-900/30 border border-gray-800 rounded text-xs">
+            <div className="flex flex-wrap items-center gap-2 md:gap-3 p-2.5 bg-gray-900/30 border border-gray-800 rounded text-xs">
               <label className="text-gray-500">Priority:</label>
               <select
                 value={filterPriority}
@@ -376,7 +376,7 @@ export default function KanbanBoard() {
                 <option value="low">Low</option>
               </select>
 
-              <label className="text-gray-500 ml-2">Assignee:</label>
+              <label className="text-gray-500">Assignee:</label>
               <select
                 value={filterAssignee}
                 onChange={e => setFilterAssignee(e.target.value)}
@@ -405,7 +405,7 @@ export default function KanbanBoard() {
       </AnimatePresence>
 
       {/* Kanban Columns */}
-      <div className="flex-1 flex gap-3 overflow-x-auto overflow-y-hidden pb-2 kanban-scroll">
+      <div className="flex-1 flex gap-2 md:gap-3 overflow-x-auto overflow-y-hidden pb-2 kanban-scroll">
         {COLUMNS.map(column => {
           const columnTasks = getColumnTasks(column.id);
           const isDropping = dropTarget === column.id && draggedTask !== null;
@@ -413,7 +413,7 @@ export default function KanbanBoard() {
           return (
             <div
               key={column.id}
-              className={`kanban-column flex flex-col min-w-[220px] flex-1 rounded-lg border transition-all duration-200 ${
+              className={`kanban-column flex flex-col min-w-[180px] md:min-w-[220px] flex-1 rounded-lg border transition-all duration-200 ${
                 isDropping
                   ? `${column.borderColor} border-opacity-100 ring-1 ring-cyan-500/30 ${column.bgColor}`
                   : 'border-gray-800/50 bg-black/20'
@@ -771,15 +771,15 @@ function AddTaskModal({ column, agents, onAdd, onClose }: AddTaskModalProps) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm"
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
+        initial={{ scale: 0.95, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.95, opacity: 0, y: 20 }}
         onClick={e => e.stopPropagation()}
-        className="bg-gray-950 border border-cyan-900/50 rounded-lg p-5 w-full max-w-md shadow-2xl shadow-cyan-900/10"
+        className="bg-gray-950 border border-cyan-900/50 rounded-t-lg md:rounded-lg p-4 md:p-5 w-full max-w-md shadow-2xl shadow-cyan-900/10 max-h-[90vh] overflow-y-auto"
       >
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-bold text-cyan-400 tracking-wider flex items-center gap-2">
@@ -813,7 +813,7 @@ function AddTaskModal({ column, agents, onAdd, onClose }: AddTaskModalProps) {
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">Priority</label>
               <select

@@ -124,3 +124,25 @@ body {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* Touch-friendly scrolling on mobile */
+@media (max-width: 767px) {
+  .kanban-scroll {
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+  }
+
+  .kanban-column {
+    scroll-snap-align: start;
+  }
+
+  /* Thinner scrollbars on mobile */
+  ::-webkit-scrollbar {
+    width: 4px;
+  }
+}
+
+/* Resize handle hover area */
+.resize-handle-area {
+  touch-action: none;
+}
