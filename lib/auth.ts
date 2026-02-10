@@ -5,7 +5,7 @@ import { prisma } from './prisma';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'mission-deck-secret-change-me';
 const TOKEN_NAME = 'mission-deck-token';
-const TOKEN_EXPIRY = '7d';
+const TOKEN_EXPIRY = '100d';
 
 export interface TokenPayload {
   agentId: string;
@@ -39,7 +39,7 @@ export async function setAuthCookie(token: string) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 60 * 60 * 24 * 100, // 100 days
     path: '/',
   });
 }
