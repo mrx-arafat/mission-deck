@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus,
@@ -17,6 +17,7 @@ import {
   User,
   Filter,
   Search,
+  Loader2,
 } from 'lucide-react';
 
 // --- Types ---
@@ -26,13 +27,13 @@ export type ColumnId = 'backlog' | 'todo' | 'in-progress' | 'review' | 'done';
 export interface KanbanTask {
   id: string;
   title: string;
-  description?: string;
-  assignee?: string;
-  priority: Priority;
-  column: ColumnId;
+  description?: string | null;
+  assignee?: string | null;
+  priority: string;
+  column: string;
   tags: string[];
-  createdAt: number;
-  updatedAt: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface Column {
@@ -94,27 +95,18 @@ const COLUMNS: Column[] = [
   },
 ];
 
-const PRIORITY_CONFIG: Record<Priority, { label: string; color: string; dot: string }> = {
+const PRIORITY_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
   critical: { label: 'CRITICAL', color: 'text-red-400 border-red-800 bg-red-950/30', dot: 'bg-red-500' },
   high: { label: 'HIGH', color: 'text-orange-400 border-orange-800 bg-orange-950/30', dot: 'bg-orange-500' },
   medium: { label: 'MED', color: 'text-yellow-400 border-yellow-800 bg-yellow-950/30', dot: 'bg-yellow-500' },
   low: { label: 'LOW', color: 'text-gray-400 border-gray-700 bg-gray-900/30', dot: 'bg-gray-500' },
 };
 
-const INITIAL_TASKS: KanbanTask[] = [
-  { id: 't1', title: 'Audit NGINX Config', description: 'Full security review of NGINX reverse proxy configuration', assignee: 'AXIS', priority: 'high', column: 'in-progress', tags: ['security', 'infra'], createdAt: Date.now() - 86400000, updatedAt: Date.now() },
-  { id: 't2', title: 'Scaffold MissionDeck UI', description: 'Build the initial dashboard layout and components', assignee: 'AXIS', priority: 'medium', column: 'done', tags: ['frontend'], createdAt: Date.now() - 172800000, updatedAt: Date.now() - 86400000 },
-  { id: 't3', title: 'Optimize Docker Containers', description: 'Reduce image sizes and optimize build layers', assignee: 'AXIS', priority: 'critical', column: 'todo', tags: ['devops', 'infra'], createdAt: Date.now() - 43200000, updatedAt: Date.now() - 43200000 },
-  { id: 't4', title: 'Update MEMORY.md', description: 'Document all recent architecture decisions', priority: 'low', column: 'backlog', tags: ['docs'], createdAt: Date.now() - 259200000, updatedAt: Date.now() - 259200000 },
-  { id: 't5', title: 'API Rate Limiter', description: 'Implement rate limiting middleware for all endpoints', assignee: 'AXIS', priority: 'high', column: 'review', tags: ['backend', 'security'], createdAt: Date.now() - 36000000, updatedAt: Date.now() - 3600000 },
-  { id: 't6', title: 'CI/CD Pipeline Refactor', description: 'Migrate from Jenkins to GitHub Actions', assignee: 'AXIS', priority: 'medium', column: 'in-progress', tags: ['devops'], createdAt: Date.now() - 50000000, updatedAt: Date.now() },
-  { id: 't7', title: 'WebSocket Gateway', description: 'Real-time event streaming for agent communication', priority: 'critical', column: 'todo', tags: ['backend', 'infra'], createdAt: Date.now() - 10000000, updatedAt: Date.now() - 10000000 },
-  { id: 't8', title: 'Dark Mode Persistence', description: 'Save theme preference to localStorage', assignee: 'AXIS', priority: 'low', column: 'done', tags: ['frontend'], createdAt: Date.now() - 300000000, updatedAt: Date.now() - 200000000 },
-];
-
 // --- Component ---
 export default function KanbanBoard() {
-  const [tasks, setTasks] = useState<KanbanTask[]>(INITIAL_TASKS);
+  const [tasks, setTasks] = useState<KanbanTask[]>([]);
+  const [agents, setAgents] = useState<{ name: string }[]>([]);
+  const [loading, setLoading] = useState(true);
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<ColumnId | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -127,12 +119,45 @@ export default function KanbanBoard() {
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const dragCounter = useRef(0);
 
+  // --- Fetch tasks from DB ---
+  useEffect(() => {
+    async function fetchTasks() {
+      try {
+        const res = await fetch('/api/tasks');
+        if (res.ok) {
+          const data = await res.json();
+          setTasks(data.tasks);
+        }
+      } catch (err) {
+        console.error('Failed to fetch tasks:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchTasks();
+  }, []);
+
+  // --- Fetch agents for assignee dropdown ---
+  useEffect(() => {
+    async function fetchAgents() {
+      try {
+        const res = await fetch('/api/agents');
+        if (res.ok) {
+          const data = await res.json();
+          setAgents(data.agents);
+        }
+      } catch (err) {
+        console.error('Failed to fetch agents:', err);
+      }
+    }
+    fetchAgents();
+  }, []);
+
   // --- Drag & Drop ---
   const handleDragStart = useCallback((e: React.DragEvent, taskId: string) => {
     setDraggedTask(taskId);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', taskId);
-    // Make the drag image slightly transparent
     if (e.currentTarget instanceof HTMLElement) {
       e.currentTarget.style.opacity = '0.5';
     }
@@ -166,44 +191,79 @@ export default function KanbanBoard() {
     e.dataTransfer.dropEffect = 'move';
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent, columnId: ColumnId) => {
+  const handleDrop = useCallback(async (e: React.DragEvent, columnId: ColumnId) => {
     e.preventDefault();
     const taskId = e.dataTransfer.getData('text/plain');
     if (taskId) {
+      // Optimistic update
       setTasks(prev =>
         prev.map(t =>
-          t.id === taskId ? { ...t, column: columnId, updatedAt: Date.now() } : t
+          t.id === taskId ? { ...t, column: columnId } : t
         )
       );
+      // Persist to DB
+      try {
+        await fetch(`/api/tasks/${taskId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ column: columnId }),
+        });
+      } catch (err) {
+        console.error('Failed to move task:', err);
+      }
     }
     setDraggedTask(null);
     setDropTarget(null);
     dragCounter.current = 0;
   }, []);
 
-  // --- CRUD ---
-  const addTask = useCallback((task: Omit<KanbanTask, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const newTask: KanbanTask = {
-      ...task,
-      id: `t${Date.now()}`,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    setTasks(prev => [...prev, newTask]);
+  // --- CRUD (all synced to DB) ---
+  const addTask = useCallback(async (task: Omit<KanbanTask, 'id' | 'createdAt' | 'updatedAt'>) => {
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(task),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTasks(prev => [...prev, data.task]);
+      }
+    } catch (err) {
+      console.error('Failed to add task:', err);
+    }
   }, []);
 
-  const updateTask = useCallback((taskId: string, updates: Partial<KanbanTask>) => {
+  const updateTask = useCallback(async (taskId: string, updates: Partial<KanbanTask>) => {
+    // Optimistic update
     setTasks(prev =>
       prev.map(t =>
-        t.id === taskId ? { ...t, ...updates, updatedAt: Date.now() } : t
+        t.id === taskId ? { ...t, ...updates } : t
       )
     );
+    // Persist to DB
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+    } catch (err) {
+      console.error('Failed to update task:', err);
+    }
   }, []);
 
-  const deleteTask = useCallback((taskId: string) => {
+  const deleteTask = useCallback(async (taskId: string) => {
+    // Optimistic update
     setTasks(prev => prev.filter(t => t.id !== taskId));
     if (editingTask === taskId) setEditingTask(null);
     if (expandedTask === taskId) setExpandedTask(null);
+    // Persist to DB
+    try {
+      await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
+    } catch (err) {
+      console.error('Failed to delete task:', err);
+    }
   }, [editingTask, expandedTask]);
 
   // --- Filtering ---
@@ -228,12 +288,24 @@ export default function KanbanBoard() {
     filteredTasks
       .filter(t => t.column === columnId)
       .sort((a, b) => {
-        const priorityOrder: Record<Priority, number> = { critical: 0, high: 1, medium: 2, low: 3 };
-        return priorityOrder[a.priority] - priorityOrder[b.priority];
+        const priorityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+        return (priorityOrder[a.priority] ?? 4) - (priorityOrder[b.priority] ?? 4);
       });
 
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter(t => t.column === 'done').length;
+  const assigneeNames = [...new Set(tasks.map(t => t.assignee).filter(Boolean))] as string[];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-6 h-6 text-cyan-600 animate-spin" />
+          <span className="text-xs text-gray-600 tracking-wider">LOADING MISSIONS...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -311,7 +383,9 @@ export default function KanbanBoard() {
                 className="bg-black border border-gray-700 rounded px-2 py-1 text-gray-300 text-xs focus:outline-none focus:border-cyan-700"
               >
                 <option value="all">All</option>
-                <option value="AXIS">AXIS</option>
+                {assigneeNames.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
                 <option value="">Unassigned</option>
               </select>
 
@@ -379,6 +453,7 @@ export default function KanbanBoard() {
                     <TaskCard
                       key={task.id}
                       task={task}
+                      agents={agents}
                       isEditing={editingTask === task.id}
                       isExpanded={expandedTask === task.id}
                       isDragging={draggedTask === task.id}
@@ -410,6 +485,7 @@ export default function KanbanBoard() {
         {showAddModal && (
           <AddTaskModal
             column={addToColumn}
+            agents={agents}
             onAdd={task => {
               addTask(task);
               setShowAddModal(false);
@@ -425,6 +501,7 @@ export default function KanbanBoard() {
 // --- Task Card ---
 interface TaskCardProps {
   task: KanbanTask;
+  agents: { name: string }[];
   isEditing: boolean;
   isExpanded: boolean;
   isDragging: boolean;
@@ -438,6 +515,7 @@ interface TaskCardProps {
 
 function TaskCard({
   task,
+  agents,
   isEditing,
   isExpanded,
   isDragging,
@@ -454,7 +532,7 @@ function TaskCard({
   const [editAssignee, setEditAssignee] = useState(task.assignee || '');
   const [editTags, setEditTags] = useState(task.tags.join(', '));
 
-  const pri = PRIORITY_CONFIG[task.priority];
+  const pri = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.medium;
 
   const saveEdit = () => {
     onUpdate(task.id, {
@@ -536,7 +614,9 @@ function TaskCard({
                   className="bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-[10px] text-gray-300 focus:outline-none flex-1"
                 >
                   <option value="">Unassigned</option>
-                  <option value="AXIS">AXIS</option>
+                  {agents.map(a => (
+                    <option key={a.name} value={a.name}>{a.name}</option>
+                  ))}
                 </select>
               </div>
               <input
@@ -657,11 +737,12 @@ function TaskCard({
 // --- Add Task Modal ---
 interface AddTaskModalProps {
   column: ColumnId;
+  agents: { name: string }[];
   onAdd: (task: Omit<KanbanTask, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onClose: () => void;
 }
 
-function AddTaskModal({ column, onAdd, onClose }: AddTaskModalProps) {
+function AddTaskModal({ column, agents, onAdd, onClose }: AddTaskModalProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<Priority>('medium');
@@ -754,7 +835,9 @@ function AddTaskModal({ column, onAdd, onClose }: AddTaskModalProps) {
                 className="w-full bg-black border border-gray-800 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-cyan-700"
               >
                 <option value="">None</option>
-                <option value="AXIS">AXIS</option>
+                {agents.map(a => (
+                  <option key={a.name} value={a.name}>{a.name}</option>
+                ))}
               </select>
             </div>
             <div>

@@ -32,3 +32,18 @@ model Message {
   @@index([createdAt])
   @@map("messages")
 }
+
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  assignee    String?
+  priority    String   @default("medium") // "critical" | "high" | "medium" | "low"
+  column      String   @default("backlog") // "backlog" | "todo" | "in-progress" | "review" | "done"
+  tags        String[] @default([])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([column])
+  @@map("tasks")
+}
