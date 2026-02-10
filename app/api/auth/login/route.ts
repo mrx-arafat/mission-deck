@@ -56,6 +56,7 @@ export async function POST(req: NextRequest) {
     await setAuthCookie(token);
 
     return NextResponse.json({
+      token, // For bot/API clients using Authorization: Bearer
       agent: {
         id: agent.id,
         username: agent.username,

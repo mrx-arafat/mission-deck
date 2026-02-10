@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { prisma } from './prisma';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'mission-deck-secret-change-me';
@@ -49,9 +49,21 @@ export async function clearAuthCookie() {
   cookieStore.delete(TOKEN_NAME);
 }
 
+// Get token from cookie OR Authorization: Bearer header
 export async function getAuthToken(): Promise<string | null> {
+  // 1. Check cookie first (browser dashboard)
   const cookieStore = await cookies();
-  return cookieStore.get(TOKEN_NAME)?.value || null;
+  const cookieToken = cookieStore.get(TOKEN_NAME)?.value;
+  if (cookieToken) return cookieToken;
+
+  // 2. Check Authorization header (bot API)
+  const headerStore = await headers();
+  const authHeader = headerStore.get('authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    return authHeader.slice(7);
+  }
+
+  return null;
 }
 
 export async function getCurrentAgent() {

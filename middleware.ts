@@ -20,15 +20,18 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check for auth token
-  const token = request.cookies.get('mission-deck-token')?.value;
+  // Check for auth token: cookie OR Authorization: Bearer header
+  const cookieToken = request.cookies.get('mission-deck-token')?.value;
+  const authHeader = request.headers.get('authorization');
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const token = cookieToken || bearerToken;
 
   if (!token) {
-    // Redirect to login for page requests
+    // Redirect to login for page requests (browser)
     if (!pathname.startsWith('/api')) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
-    // Return 401 for API requests
+    // Return 401 for API requests (bot)
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
