@@ -60,10 +60,14 @@ export function getPusherClient(): PusherClient | null {
   return pusherClient;
 }
 
-// Safely trigger a Pusher event (no-op if not configured)
+// Safely trigger a Pusher event (no-op if not configured, never throws)
 export async function triggerEvent(channel: string, event: string, data: unknown) {
-  const pusher = getPusherServer();
-  if (pusher) {
-    await pusher.trigger(channel, event, data);
+  try {
+    const pusher = getPusherServer();
+    if (pusher) {
+      await pusher.trigger(channel, event, data);
+    }
+  } catch (err) {
+    console.error('Pusher triggerEvent failed:', err);
   }
 }
