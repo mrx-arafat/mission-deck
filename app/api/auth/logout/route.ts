@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentAgent, clearAuthCookie } from '@/lib/auth';
+import { getCurrentAgent } from '@/lib/auth';
 import { triggerEvent, CHAT_CHANNEL, EVENTS } from '@/lib/pusher';
 
 export async function POST() {
@@ -14,7 +14,7 @@ export async function POST() {
         data: { status: 'offline' },
       });
 
-      // Notify other agents (no-op if Pusher not configured)
+      // Notify other agents
       await triggerEvent(CHAT_CHANNEL, EVENTS.AGENT_STATUS, {
         agentId: agent.id,
         username: agent.username,
@@ -23,9 +23,18 @@ export async function POST() {
       });
     }
 
-    await clearAuthCookie();
+    const response = NextResponse.json({ success: true });
 
-    return NextResponse.json({ success: true });
+    // Delete cookie directly on the response object
+    response.cookies.set('mission-deck-token', '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 0,
+      path: '/',
+    });
+
+    return response;
   } catch (error) {
     console.error('Logout error:', error);
     return NextResponse.json(
