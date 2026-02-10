@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyPassword, signToken, setAuthCookie } from '@/lib/auth';
-import { getPusherServer, CHAT_CHANNEL, EVENTS } from '@/lib/pusher';
+import { triggerEvent, CHAT_CHANNEL, EVENTS } from '@/lib/pusher';
 
 export async function POST(req: NextRequest) {
   try {
@@ -39,9 +39,8 @@ export async function POST(req: NextRequest) {
       data: { status: 'online' },
     });
 
-    // Notify other agents
-    const pusher = getPusherServer();
-    await pusher.trigger(CHAT_CHANNEL, EVENTS.AGENT_STATUS, {
+    // Notify other agents (no-op if Pusher not configured)
+    await triggerEvent(CHAT_CHANNEL, EVENTS.AGENT_STATUS, {
       agentId: agent.id,
       username: agent.username,
       name: agent.name,

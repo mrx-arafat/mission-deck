@@ -9,10 +9,10 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  console.log('Seeding database...');
+  console.log('Seeding database...\n');
 
-  // Create AXIS (admin) - first agent gets admin role automatically
-  const axisPassword = await bcrypt.hash('axis-admin-2024', 10);
+  // Create AXIS (admin / lead agent)
+  const axisPassword = await bcrypt.hash('password', 10);
   const axis = await prisma.agent.upsert({
     where: { username: 'axis' },
     update: {},
@@ -26,11 +26,25 @@ async function main() {
   });
   console.log(`Created agent: ${axis.name} (${axis.role})`);
 
-  console.log('Seed completed.');
-  console.log('\nDefault login:');
-  console.log('  Username: axis');
-  console.log('  Password: axis-admin-2024');
-  console.log('\nChange the password after first login!');
+  // Create MOXY (agent)
+  const moxyPassword = await bcrypt.hash('password', 10);
+  const moxy = await prisma.agent.upsert({
+    where: { username: 'moxy' },
+    update: {},
+    create: {
+      username: 'moxy',
+      password: moxyPassword,
+      name: 'MOXY',
+      role: 'agent',
+      status: 'offline',
+    },
+  });
+  console.log(`Created agent: ${moxy.name} (${moxy.role})`);
+
+  console.log('\n--- Seed completed ---');
+  console.log('\nAgent Credentials:');
+  console.log('  AXIS  -> username: axis  | password: password | role: admin');
+  console.log('  MOXY  -> username: moxy  | password: password | role: agent');
 }
 
 main()

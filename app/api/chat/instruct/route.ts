@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentAgent } from '@/lib/auth';
-import { getPusherServer, CHAT_CHANNEL, EVENTS } from '@/lib/pusher';
+import { triggerEvent, CHAT_CHANNEL, EVENTS } from '@/lib/pusher';
 
 // POST - Admin sends instruction to all agents
 export async function POST(req: NextRequest) {
@@ -45,9 +45,8 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Broadcast instruction via Pusher
-    const pusher = getPusherServer();
-    await pusher.trigger(CHAT_CHANNEL, EVENTS.NEW_MESSAGE, message);
+    // Broadcast instruction via Pusher (no-op if not configured)
+    await triggerEvent(CHAT_CHANNEL, EVENTS.NEW_MESSAGE, message);
 
     return NextResponse.json({ message }, { status: 201 });
   } catch (error) {

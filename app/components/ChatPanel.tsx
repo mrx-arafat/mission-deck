@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from './AuthProvider';
-import { getPusherClient, CHAT_CHANNEL, EVENTS } from '@/lib/pusher';
 
 interface AgentInfo {
   id: string;
@@ -38,6 +37,8 @@ interface ChatMessage {
   };
 }
 
+const POLL_INTERVAL = 2000; // 2 seconds
+
 export default function ChatPanel() {
   const { agent } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -51,6 +52,8 @@ export default function ChatPanel() {
   const [isAtBottom, setIsAtBottom] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const lastMessageTimeRef = useRef<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isAdmin = agent?.role === 'admin';
 
@@ -70,7 +73,7 @@ export default function ChatPanel() {
     setIsAtBottom(atBottom);
   }, []);
 
-  // Fetch messages
+  // Fetch all messages (initial load)
   useEffect(() => {
     async function fetchMessages() {
       try {
@@ -78,6 +81,9 @@ export default function ChatPanel() {
         if (res.ok) {
           const data = await res.json();
           setMessages(data.messages);
+          if (data.messages.length > 0) {
+            lastMessageTimeRef.current = data.messages[data.messages.length - 1].createdAt;
+          }
         }
       } catch (err) {
         console.error('Failed to fetch messages:', err);
@@ -102,36 +108,112 @@ export default function ChatPanel() {
       }
     }
     fetchAgents();
+
+    // Re-fetch agents periodically for status updates
+    const agentPoll = setInterval(fetchAgents, 10000);
+    return () => clearInterval(agentPoll);
   }, []);
 
-  // Subscribe to Pusher
+  // Polling for new messages (real-time without Pusher)
   useEffect(() => {
-    const pusher = getPusherClient();
-    const channel = pusher.subscribe(CHAT_CHANNEL);
+    async function pollMessages() {
+      if (!lastMessageTimeRef.current) return;
 
-    channel.bind(EVENTS.NEW_MESSAGE, (data: ChatMessage) => {
-      setMessages(prev => {
-        // Prevent duplicates
-        if (prev.some(m => m.id === data.id)) return prev;
-        return [...prev, data];
-      });
-    });
+      try {
+        const res = await fetch(
+          `/api/chat/messages?after=${encodeURIComponent(lastMessageTimeRef.current)}&limit=50`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (data.messages.length > 0) {
+            setMessages(prev => {
+              const existingIds = new Set(prev.map(m => m.id));
+              const newMessages = data.messages.filter((m: ChatMessage) => !existingIds.has(m.id));
+              if (newMessages.length === 0) return prev;
+              return [...prev, ...newMessages];
+            });
+            lastMessageTimeRef.current = data.messages[data.messages.length - 1].createdAt;
+          }
+        }
+      } catch (err) {
+        console.error('Poll error:', err);
+      }
+    }
 
-    channel.bind(EVENTS.CHAT_CLEARED, () => {
-      setMessages([]);
-    });
+    // Also check if messages were cleared
+    async function pollForCleared() {
+      try {
+        const res = await fetch('/api/chat/messages?limit=1');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.messages.length === 0 && messages.length > 0) {
+            setMessages([]);
+            lastMessageTimeRef.current = null;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
 
-    channel.bind(EVENTS.AGENT_STATUS, (data: { agentId: string; status: string; name: string; username: string }) => {
-      setAgents(prev =>
-        prev.map(a =>
-          a.id === data.agentId ? { ...a, status: data.status } : a
-        )
-      );
-    });
+    pollRef.current = setInterval(() => {
+      pollMessages();
+      pollForCleared();
+    }, POLL_INTERVAL);
 
     return () => {
-      channel.unbind_all();
-      pusher.unsubscribe(CHAT_CHANNEL);
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [messages.length]);
+
+  // Try to set up Pusher if configured (upgrades to true WebSocket)
+  useEffect(() => {
+    let channel: ReturnType<typeof import('pusher-js').default.prototype.subscribe> | null = null;
+
+    async function setupPusher() {
+      try {
+        const { getPusherClient, CHAT_CHANNEL, EVENTS } = await import('@/lib/pusher');
+        const pusher = getPusherClient();
+        if (!pusher) return; // Pusher not configured, stick with polling
+
+        channel = pusher.subscribe(CHAT_CHANNEL);
+
+        channel.bind(EVENTS.NEW_MESSAGE, (data: ChatMessage) => {
+          setMessages(prev => {
+            if (prev.some(m => m.id === data.id)) return prev;
+            lastMessageTimeRef.current = data.createdAt;
+            return [...prev, data];
+          });
+        });
+
+        channel.bind(EVENTS.CHAT_CLEARED, () => {
+          setMessages([]);
+          lastMessageTimeRef.current = null;
+        });
+
+        channel.bind(EVENTS.AGENT_STATUS, (data: { agentId: string; status: string }) => {
+          setAgents(prev =>
+            prev.map(a =>
+              a.id === data.agentId ? { ...a, status: data.status } : a
+            )
+          );
+        });
+
+        // If Pusher is connected, reduce polling frequency
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+        }
+      } catch {
+        // Pusher not available, polling continues
+      }
+    }
+
+    setupPusher();
+
+    return () => {
+      if (channel) {
+        channel.unbind_all();
+      }
     };
   }, []);
 
@@ -165,9 +247,17 @@ export default function ChatPanel() {
         body: JSON.stringify({ content }),
       });
 
-      if (!res.ok) {
+      if (res.ok) {
+        const data = await res.json();
+        // Add message immediately for sender (prevents delay)
+        setMessages(prev => {
+          if (prev.some(m => m.id === data.message.id)) return prev;
+          lastMessageTimeRef.current = data.message.createdAt;
+          return [...prev, data.message];
+        });
+      } else {
         console.error('Failed to send message');
-        setInput(content); // Restore input on failure
+        setInput(content);
       }
     } catch (err) {
       console.error('Send error:', err);
@@ -182,7 +272,11 @@ export default function ChatPanel() {
     if (!confirm('Clear all chat messages? This cannot be undone.')) return;
 
     try {
-      await fetch('/api/chat/messages', { method: 'DELETE' });
+      const res = await fetch('/api/chat/messages', { method: 'DELETE' });
+      if (res.ok) {
+        setMessages([]);
+        lastMessageTimeRef.current = null;
+      }
     } catch (err) {
       console.error('Clear chat error:', err);
     }
@@ -201,6 +295,12 @@ export default function ChatPanel() {
       });
 
       if (res.ok) {
+        const data = await res.json();
+        setMessages(prev => {
+          if (prev.some(m => m.id === data.message.id)) return prev;
+          lastMessageTimeRef.current = data.message.createdAt;
+          return [...prev, data.message];
+        });
         setInstructContent('');
         setShowInstructModal(false);
       }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentAgent } from '@/lib/auth';
-import { getPusherServer, CHAT_CHANNEL, EVENTS } from '@/lib/pusher';
+import { triggerEvent, CHAT_CHANNEL, EVENTS } from '@/lib/pusher';
 
 // GET - Fetch chat messages (paginated)
 export async function GET(req: NextRequest) {
@@ -14,10 +14,16 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const cursor = searchParams.get('cursor');
     const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
+    const after = searchParams.get('after'); // ISO timestamp for polling
+
+    const whereClause = after
+      ? { createdAt: { gt: new Date(after) } }
+      : {};
 
     const messages = await prisma.message.findMany({
       take: limit,
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      where: whereClause,
       orderBy: { createdAt: 'desc' },
       include: {
         agent: {
@@ -83,9 +89,8 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Broadcast via Pusher
-    const pusher = getPusherServer();
-    await pusher.trigger(CHAT_CHANNEL, EVENTS.NEW_MESSAGE, message);
+    // Broadcast via Pusher (no-op if not configured)
+    await triggerEvent(CHAT_CHANNEL, EVENTS.NEW_MESSAGE, message);
 
     return NextResponse.json({ message }, { status: 201 });
   } catch (error) {
@@ -114,9 +119,8 @@ export async function DELETE() {
 
     await prisma.message.deleteMany({});
 
-    // Broadcast chat cleared event
-    const pusher = getPusherServer();
-    await pusher.trigger(CHAT_CHANNEL, EVENTS.CHAT_CLEARED, {
+    // Broadcast chat cleared event (no-op if not configured)
+    await triggerEvent(CHAT_CHANNEL, EVENTS.CHAT_CLEARED, {
       clearedBy: agent.name,
       timestamp: new Date().toISOString(),
     });
