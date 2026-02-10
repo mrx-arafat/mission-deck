@@ -51,7 +51,7 @@ const COLUMNS: Column[] = [
   {
     id: 'backlog',
     title: 'BACKLOG',
-    iconName: 'Clock',
+    icon: <Clock className="w-4 h-4" />,
     color: 'text-gray-400',
     borderColor: 'border-gray-700',
     bgColor: 'bg-gray-900/20',
@@ -60,7 +60,7 @@ const COLUMNS: Column[] = [
   {
     id: 'todo',
     title: 'QUEUED',
-    iconName: 'Zap',
+    icon: <Zap className="w-4 h-4" />,
     color: 'text-yellow-400',
     borderColor: 'border-yellow-900/50',
     bgColor: 'bg-yellow-950/10',
@@ -69,7 +69,7 @@ const COLUMNS: Column[] = [
   {
     id: 'in-progress',
     title: 'ACTIVE',
-    iconName: 'ArrowRight',
+    icon: <ArrowRight className="w-4 h-4" />,
     color: 'text-cyan-400',
     borderColor: 'border-cyan-900/50',
     bgColor: 'bg-cyan-950/10',
@@ -78,7 +78,7 @@ const COLUMNS: Column[] = [
   {
     id: 'review',
     title: 'REVIEW',
-    iconName: 'AlertTriangle',
+    icon: <AlertTriangle className="w-4 h-4" />,
     color: 'text-purple-400',
     borderColor: 'border-purple-900/50',
     bgColor: 'bg-purple-950/10',
@@ -87,7 +87,7 @@ const COLUMNS: Column[] = [
   {
     id: 'done',
     title: 'COMPLETE',
-    iconName: 'CheckCircle2',
+    icon: <CheckCircle2 className="w-4 h-4" />,
     color: 'text-green-400',
     borderColor: 'border-green-900/50',
     bgColor: 'bg-green-950/10',
@@ -117,7 +117,6 @@ export default function KanbanBoard() {
   const [filterAssignee, setFilterAssignee] = useState<string | 'all'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
-  const [handoffTask, setHandoffTask] = useState<KanbanTask | null>(null);
   const dragCounter = useRef(0);
 
   // --- Fetch tasks from DB ---
@@ -156,18 +155,13 @@ export default function KanbanBoard() {
 
   // --- Drag & Drop ---
   const handleDragStart = useCallback((e: React.DragEvent, taskId: string) => {
-    // Check if task is locked by another agent
-    const task = tasks.find(t => t.id === taskId);
-    if (task?.lockedBy) {
-      // Still allow drag but will show locked state
-    }
     setDraggedTask(taskId);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', taskId);
     if (e.currentTarget instanceof HTMLElement) {
       e.currentTarget.style.opacity = '0.5';
     }
-  }, [tasks]);
+  }, []);
 
   const handleDragEnd = useCallback((e: React.DragEvent) => {
     setDraggedTask(null);
@@ -276,11 +270,10 @@ export default function KanbanBoard() {
   const filteredTasks = tasks.filter(task => {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      const agentName = agents.find(a => a.id === task.assignee)?.name || '';
       if (
         !task.title.toLowerCase().includes(q) &&
         !task.description?.toLowerCase().includes(q) &&
-        !agentName.toLowerCase().includes(q) &&
+        !task.assignee?.toLowerCase().includes(q) &&
         !task.tags.some(t => t.toLowerCase().includes(q))
       ) {
         return false;
@@ -313,30 +306,6 @@ export default function KanbanBoard() {
       </div>
     );
   }
-
-  // Claim handler for human
-  const handleHumanClaim = (taskId: string) => {
-    const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
-    // Human claims it by setting assignee to 'human'
-    updateTask(taskId, { assignee: 'human', claimedBy: 'human', lockedBy: 'human' });
-    sendMessage({
-      senderId: 'human',
-      senderName: 'YOU',
-      content: `I'm taking over "${task.title}".`,
-      channel: 'general',
-      type: 'claim',
-      taskRef: taskId,
-    });
-    addStatusUpdate({
-      agentId: 'human',
-      agentName: 'Human Operator',
-      type: 'claim',
-      message: `Human claimed "${task.title}"`,
-      taskId,
-      taskTitle: task.title,
-    });
-  };
 
   return (
     <div className="flex flex-col h-full">
@@ -457,7 +426,7 @@ export default function KanbanBoard() {
               {/* Column Header */}
               <div className={`flex items-center justify-between px-3 py-2.5 border-b ${column.borderColor} bg-black/30 rounded-t-lg`}>
                 <div className={`flex items-center gap-2 ${column.color}`}>
-                  {COLUMN_ICONS[column.iconName]}
+                  {column.icon}
                   <span className="text-[11px] font-bold tracking-wider">{column.title}</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -494,8 +463,6 @@ export default function KanbanBoard() {
                       onExpand={() => setExpandedTask(expandedTask === task.id ? null : task.id)}
                       onUpdate={updateTask}
                       onDelete={deleteTask}
-                      onHandoff={() => setHandoffTask(task)}
-                      onHumanClaim={() => handleHumanClaim(task.id)}
                     />
                   ))}
                 </AnimatePresence>
@@ -527,13 +494,6 @@ export default function KanbanBoard() {
           />
         )}
       </AnimatePresence>
-
-      {/* Handoff Modal */}
-      <AnimatePresence>
-        {handoffTask && (
-          <HandoffModal task={handoffTask} onClose={() => setHandoffTask(null)} />
-        )}
-      </AnimatePresence>
     </div>
   );
 }
@@ -551,8 +511,6 @@ interface TaskCardProps {
   onExpand: () => void;
   onUpdate: (id: string, updates: Partial<KanbanTask>) => void;
   onDelete: (id: string) => void;
-  onHandoff: () => void;
-  onHumanClaim: () => void;
 }
 
 function TaskCard({
@@ -567,10 +525,7 @@ function TaskCard({
   onExpand,
   onUpdate,
   onDelete,
-  onHandoff,
-  onHumanClaim,
 }: TaskCardProps) {
-  const { agents } = useMissionStore();
   const [editTitle, setEditTitle] = useState(task.title);
   const [editDescription, setEditDescription] = useState(task.description || '');
   const [editPriority, setEditPriority] = useState(task.priority);
@@ -608,28 +563,22 @@ function TaskCard({
       onDragStart={e => onDragStart(e, task.id)}
       onDragEnd={onDragEnd}
     >
-      <motion.div
-        layout
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: isDragging ? 0.5 : 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        transition={{ duration: 0.15 }}
-        className={`group relative bg-black/50 border rounded-md p-2.5 cursor-grab active:cursor-grabbing hover:border-gray-700 transition-all ${
-          isExpanded ? 'ring-1 ring-cyan-900/50' : ''
-        } ${
-          task.isHandoff
-            ? 'border-purple-800/50'
-            : isLocked
-            ? 'border-yellow-900/30'
-            : 'border-gray-800'
-        }`}
-      >
-        {/* Lock indicator */}
-        {isLocked && (
-          <div className="absolute -top-1.5 -right-1.5 bg-yellow-900/80 rounded-full p-0.5" title={`Locked by ${claimedAgent?.name || task.lockedBy}`}>
-            <Lock className="w-2.5 h-2.5 text-yellow-400" />
-          </div>
-        )}
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: isDragging ? 0.5 : 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ duration: 0.15 }}
+      className={`group relative bg-black/50 border border-gray-800 rounded-md p-2.5 cursor-grab active:cursor-grabbing hover:border-gray-700 transition-all ${
+        isExpanded ? 'ring-1 ring-cyan-900/50' : ''
+      }`}
+    >
+      {/* Drag Handle + Priority Dot */}
+      <div className="flex items-start gap-2">
+        <div className="flex flex-col items-center gap-1 pt-0.5">
+          <GripVertical className="w-3 h-3 text-gray-700 group-hover:text-gray-500" />
+          <div className={`w-2 h-2 rounded-full ${pri.dot}`} title={pri.label} />
+        </div>
 
         <div className="flex-1 min-w-0">
           {isEditing ? (
@@ -701,227 +650,86 @@ function TaskCard({
                 {task.title}
               </div>
 
-        {/* Drag Handle + Priority Dot */}
-        <div className="flex items-start gap-2">
-          <div className="flex flex-col items-center gap-1 pt-0.5">
-            <GripVertical className="w-3 h-3 text-gray-700 group-hover:text-gray-500" />
-            <div className={`w-2 h-2 rounded-full ${pri.dot}`} title={pri.label} />
-          </div>
+              {/* Expanded Details */}
+              <AnimatePresence>
+                {isExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden"
+                  >
+                    {task.description && (
+                      <p className="text-[10px] text-gray-500 mt-1.5 leading-relaxed">
+                        {task.description}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-1.5 mt-2 text-[9px] text-gray-600">
+                      <span>Created {new Date(task.createdAt).toLocaleDateString()}</span>
+                      <span>|</span>
+                      <span>Updated {new Date(task.updatedAt).toLocaleDateString()}</span>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-          <div className="flex-1 min-w-0">
-            {isEditing ? (
-              /* Edit Mode */
-              <div className="space-y-2">
-                <input
-                  value={editTitle}
-                  onChange={e => setEditTitle(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-cyan-700"
-                  autoFocus
-                />
-                <textarea
-                  value={editDescription}
-                  onChange={e => setEditDescription(e.target.value)}
-                  rows={2}
-                  placeholder="Description..."
-                  className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-cyan-700 resize-none"
-                />
-                <div className="flex gap-2">
-                  <select
-                    value={editPriority}
-                    onChange={e => setEditPriority(e.target.value as Priority)}
-                    className="bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-[10px] text-gray-300 focus:outline-none"
-                  >
-                    <option value="critical">Critical</option>
-                    <option value="high">High</option>
-                    <option value="medium">Medium</option>
-                    <option value="low">Low</option>
-                  </select>
-                  <select
-                    value={editAssignee}
-                    onChange={e => setEditAssignee(e.target.value)}
-                    className="bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-[10px] text-gray-300 focus:outline-none flex-1"
-                  >
-                    <option value="">Unassigned</option>
-                    {agents.map(a => (
-                      <option key={a.id} value={a.id}>
-                        {a.avatar} {a.name}
-                      </option>
-                    ))}
-                    <option value="human">👤 Human</option>
-                  </select>
+              {/* Tags */}
+              {task.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {task.tags.map(tag => (
+                    <span
+                      key={tag}
+                      className="text-[9px] px-1.5 py-0.5 rounded bg-gray-800/50 text-gray-500 border border-gray-800"
+                    >
+                      {tag}
+                    </span>
+                  ))}
                 </div>
-                <input
-                  value={editTags}
-                  onChange={e => setEditTags(e.target.value)}
-                  placeholder="Tags (comma separated)"
-                  className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-[10px] text-gray-300 focus:outline-none focus:border-cyan-700"
-                />
-                <div className="flex justify-end gap-1.5">
+              )}
+
+              {/* Footer */}
+              <div className="flex items-center justify-between mt-2">
+                <div className="flex items-center gap-1.5">
+                  {task.assignee && (
+                    <span className="text-[10px] text-cyan-600 flex items-center gap-1">
+                      <User className="w-2.5 h-2.5" />
+                      {task.assignee}
+                    </span>
+                  )}
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded border ${pri.color}`}>
+                    {pri.label}
+                  </span>
+                </div>
+
+                {/* Actions (visible on hover) */}
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
-                    onClick={resetEdit}
-                    className="text-[10px] px-2 py-1 border border-gray-700 rounded text-gray-400 hover:text-gray-200 hover:border-gray-600"
+                    onClick={e => {
+                      e.stopPropagation();
+                      onEdit();
+                    }}
+                    className="text-gray-600 hover:text-cyan-400 transition-colors p-0.5"
+                    title="Edit"
                   >
-                    <X className="w-3 h-3" />
+                    <Edit3 className="w-3 h-3" />
                   </button>
                   <button
-                    onClick={saveEdit}
-                    className="text-[10px] px-2 py-1 border border-cyan-800 rounded text-cyan-400 hover:text-cyan-200 hover:border-cyan-600 bg-cyan-950/20"
+                    onClick={e => {
+                      e.stopPropagation();
+                      onDelete(task.id);
+                    }}
+                    className="text-gray-600 hover:text-red-400 transition-colors p-0.5"
+                    title="Delete"
                   >
-                    <Check className="w-3 h-3" />
+                    <Trash2 className="w-3 h-3" />
                   </button>
                 </div>
               </div>
-            ) : (
-              /* View Mode */
-              <>
-                <div
-                  className="text-xs font-medium text-gray-200 leading-snug cursor-pointer hover:text-cyan-300 transition-colors"
-                  onClick={onExpand}
-                >
-                  {task.title}
-                </div>
-
-                {/* Expanded Details */}
-                <AnimatePresence>
-                  {isExpanded && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      className="overflow-hidden"
-                    >
-                      {task.description && (
-                        <p className="text-[10px] text-gray-500 mt-1.5 leading-relaxed">
-                          {task.description}
-                        </p>
-                      )}
-
-                      {/* Handoff info */}
-                      {task.isHandoff && (
-                        <div className="mt-1.5 p-1.5 bg-purple-950/20 border border-purple-900/30 rounded text-[9px]">
-                          <span className="text-purple-400 font-bold">HANDOFF: </span>
-                          <span className="text-gray-400">
-                            {agents.find(a => a.id === task.handoffFrom)?.name || task.handoffFrom} →{' '}
-                            {task.handoffTo === 'human' ? 'Human' : agents.find(a => a.id === task.handoffTo)?.name || task.handoffTo}
-                          </span>
-                          {task.handoffNote && (
-                            <p className="text-gray-500 mt-0.5">{task.handoffNote}</p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Worklog */}
-                      {task.worklog && task.worklog.length > 0 && (
-                        <div className="mt-1.5 space-y-0.5">
-                          <span className="text-[8px] text-gray-600 uppercase">Activity</span>
-                          {task.worklog.slice(-3).map((entry, i) => (
-                            <div key={i} className="flex items-center gap-1 text-[8px] text-gray-600">
-                              <span>{agents.find(a => a.id === entry.agentId)?.avatar || '👤'}</span>
-                              <span>{entry.action}</span>
-                              <span className="text-gray-700">
-                                {new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-1.5 mt-2 text-[9px] text-gray-600">
-                        <span>Created {new Date(task.createdAt).toLocaleDateString()}</span>
-                        <span>|</span>
-                        <span>Updated {new Date(task.updatedAt).toLocaleDateString()}</span>
-                      </div>
-
-                      {/* Claim button for unclaimed tasks */}
-                      {!task.claimedBy && (
-                        <button
-                          onClick={e => {
-                            e.stopPropagation();
-                            onHumanClaim();
-                          }}
-                          className="mt-2 w-full text-[10px] py-1 border border-cyan-800 rounded text-cyan-400 hover:bg-cyan-950/20 transition-colors"
-                        >
-                          CLAIM TASK
-                        </button>
-                      )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Tags */}
-                {task.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1.5">
-                    {task.tags.map(tag => (
-                      <span
-                        key={tag}
-                        className="text-[9px] px-1.5 py-0.5 rounded bg-gray-800/50 text-gray-500 border border-gray-800"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {/* Footer */}
-                <div className="flex items-center justify-between mt-2">
-                  <div className="flex items-center gap-1.5">
-                    {assigneeAgent ? (
-                      <span className="text-[10px] text-cyan-600 flex items-center gap-1">
-                        <span className="text-xs">{assigneeAgent.avatar}</span>
-                        {assigneeAgent.name}
-                      </span>
-                    ) : task.assignee === 'human' ? (
-                      <span className="text-[10px] text-violet-500 flex items-center gap-1">
-                        <User className="w-2.5 h-2.5" />
-                        YOU
-                      </span>
-                    ) : null}
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded border ${pri.color}`}>
-                      {pri.label}
-                    </span>
-                  </div>
-
-                  {/* Actions (visible on hover) */}
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {task.claimedBy && (
-                      <button
-                        onClick={e => {
-                          e.stopPropagation();
-                          onHandoff();
-                        }}
-                        className="text-gray-600 hover:text-purple-400 transition-colors p-0.5"
-                        title="Handoff"
-                      >
-                        <ArrowRightLeft className="w-3 h-3" />
-                      </button>
-                    )}
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        onEdit();
-                      }}
-                      className="text-gray-600 hover:text-cyan-400 transition-colors p-0.5"
-                      title="Edit"
-                    >
-                      <Edit3 className="w-3 h-3" />
-                    </button>
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        onDelete(task.id);
-                      }}
-                      className="text-gray-600 hover:text-red-400 transition-colors p-0.5"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
+            </>
+          )}
         </div>
-      </motion.div>
+      </div>
+    </motion.div>
     </div>
   );
 }
