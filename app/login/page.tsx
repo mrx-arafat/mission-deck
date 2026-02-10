@@ -1,12 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { Bot, Shield, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useAuth } from '../components/AuthProvider';
 
 export default function LoginPage() {
-  const router = useRouter();
   const { agent, login } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -17,9 +15,9 @@ export default function LoginPage() {
   // If already authenticated, redirect to dashboard
   useEffect(() => {
     if (agent) {
-      router.replace('/');
+      window.location.href = '/';
     }
-  }, [agent, router]);
+  }, [agent]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -34,10 +32,9 @@ export default function LoginPage() {
       return;
     }
 
-    // login() sets agent in AuthContext, which triggers the useEffect above
-    // to redirect to /. We keep loading=true so the button stays in loading state
-    // until navigation completes.
-    router.replace('/');
+    // Full page navigation avoids React DOM reconciliation crash
+    // between login page tree and dashboard tree
+    window.location.href = '/';
   }
 
   return (

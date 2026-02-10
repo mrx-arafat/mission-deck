@@ -1,20 +1,18 @@
 'use client';
 
 import { useAuth } from './components/AuthProvider';
-import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { Loader2, Bot } from 'lucide-react';
 import MissionControl from './components/MissionControl';
 
 export default function Home() {
   const { agent, loading } = useAuth();
-  const router = useRouter();
 
   useEffect(() => {
     if (!loading && !agent) {
-      router.replace('/login');
+      window.location.href = '/login';
     }
-  }, [loading, agent, router]);
+  }, [loading, agent]);
 
   if (loading || !agent) {
     return (
