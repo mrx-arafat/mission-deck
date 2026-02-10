@@ -12,10 +12,10 @@ async function main() {
   console.log('Seeding database...\n');
 
   // Create AXIS (admin / lead agent)
-  const axisPassword = await bcrypt.hash('password', 10);
+  const axisPassword = await bcrypt.hash('axis@69', 10);
   const axis = await prisma.agent.upsert({
     where: { username: 'axis' },
-    update: {},
+    update: { password: axisPassword },
     create: {
       username: 'axis',
       password: axisPassword,
@@ -27,10 +27,10 @@ async function main() {
   console.log(`Created agent: ${axis.name} (${axis.role})`);
 
   // Create MOXY (agent)
-  const moxyPassword = await bcrypt.hash('password', 10);
+  const moxyPassword = await bcrypt.hash('moxy@69', 10);
   const moxy = await prisma.agent.upsert({
     where: { username: 'moxy' },
-    update: {},
+    update: { password: moxyPassword },
     create: {
       username: 'moxy',
       password: moxyPassword,
@@ -43,8 +43,8 @@ async function main() {
 
   console.log('\n--- Seed completed ---');
   console.log('\nAgent Credentials:');
-  console.log('  AXIS  -> username: axis  | password: password | role: admin');
-  console.log('  MOXY  -> username: moxy  | password: password | role: agent');
+  console.log('  AXIS  -> username: axis  | password: axis@69 | role: admin');
+  console.log('  MOXY  -> username: moxy  | password: moxy@69 | role: agent');
 }
 
 main()
