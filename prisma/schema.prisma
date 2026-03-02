@@ -14,6 +14,7 @@ model Agent {
   name          String
   role          String         @default("agent") // "admin" | "agent"
   status        String         @default("offline") // "online" | "offline"
+  capabilities  String[]       @default([])
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   messages      Message[]
@@ -43,6 +44,8 @@ model Task {
   priority    String    @default("medium") // "critical" | "high" | "medium" | "low"
   column      String    @default("backlog") // "backlog" | "todo" | "in-progress" | "review" | "done"
   tags        String[]  @default([])
+  claimedBy   String?   // agent ID who claimed this
+  claimedAt   DateTime? // when it was claimed
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   comments    Comment[]

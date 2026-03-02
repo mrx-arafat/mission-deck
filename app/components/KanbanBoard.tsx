@@ -20,6 +20,8 @@ import {
   Loader2,
   MessageCircle,
   Send,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 import { useAuth } from './AuthProvider';
 import { getPusherClient, CHAT_CHANNEL, EVENTS } from '@/lib/pusher';
@@ -36,6 +38,8 @@ export interface KanbanTask {
   priority: string;
   column: string;
   tags: string[];
+  claimedBy?: string | null;
+  claimedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -46,6 +50,7 @@ interface AgentInfo {
   name: string;
   role: string;
   status: string;
+  capabilities?: string[];
 }
 
 interface Comment {
@@ -183,6 +188,42 @@ export default function KanbanBoard({ onlineAgents = [] }: KanbanBoardProps) {
       }
     }
     fetchAgents();
+  }, []);
+
+  // --- Real-time Pusher: task-claimed / task-unclaimed ---
+  useEffect(() => {
+    const pusher = getPusherClient();
+    if (!pusher) return;
+
+    const channel = pusher.subscribe(CHAT_CHANNEL);
+
+    const handleClaimed = (data: { taskId: string; agentId: string; agentName: string }) => {
+      setTasks(prev =>
+        prev.map(t =>
+          t.id === data.taskId
+            ? { ...t, claimedBy: data.agentId, claimedAt: new Date().toISOString(), assignee: data.agentName, column: 'in-progress' }
+            : t
+        )
+      );
+    };
+
+    const handleUnclaimed = (data: { taskId: string }) => {
+      setTasks(prev =>
+        prev.map(t =>
+          t.id === data.taskId
+            ? { ...t, claimedBy: null, claimedAt: null, assignee: null, column: 'todo' }
+            : t
+        )
+      );
+    };
+
+    channel.bind(EVENTS.TASK_CLAIMED, handleClaimed);
+    channel.bind(EVENTS.TASK_UNCLAIMED, handleUnclaimed);
+
+    return () => {
+      channel.unbind(EVENTS.TASK_CLAIMED, handleClaimed);
+      channel.unbind(EVENTS.TASK_UNCLAIMED, handleUnclaimed);
+    };
   }, []);
 
   // --- Drag & Drop ---
@@ -576,6 +617,44 @@ function TaskCard({
 
   const pri = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.medium;
 
+  // Claim state
+  const isClaimedByMe = task.claimedBy === currentAgent?.id;
+  const isClaimedByOther = !!task.claimedBy && !isClaimedByMe;
+  const isClaimable = !task.claimedBy && (task.column === 'backlog' || task.column === 'todo');
+  const [claiming, setClaiming] = useState(false);
+
+  // Find agent capabilities for the assignee
+  const assigneeAgent = agents.find(a => a.name === task.assignee);
+  const assigneeCaps = assigneeAgent?.capabilities?.slice(0, 2) || [];
+
+  async function handleClaim() {
+    if (claiming) return;
+    setClaiming(true);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}/claim`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        onUpdate(task.id, data.task);
+      }
+    } catch {} finally {
+      setClaiming(false);
+    }
+  }
+
+  async function handleUnclaim() {
+    if (claiming) return;
+    setClaiming(true);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}/unclaim`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        onUpdate(task.id, data.task);
+      }
+    } catch {} finally {
+      setClaiming(false);
+    }
+  }
+
   // Fetch comments when expanded
   useEffect(() => {
     if (showComments) {
@@ -672,8 +751,11 @@ function TaskCard({
 
   return (
     <div
-      draggable
-      onDragStart={e => onDragStart(e, task.id)}
+      draggable={!isClaimedByOther}
+      onDragStart={e => {
+        if (isClaimedByOther) { e.preventDefault(); return; }
+        onDragStart(e, task.id);
+      }}
       onDragEnd={onDragEnd}
     >
     <motion.div
@@ -682,9 +764,13 @@ function TaskCard({
       animate={{ opacity: isDragging ? 0.5 : 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.15 }}
-      className={`group relative bg-black/50 border border-gray-800 rounded-md p-2.5 cursor-grab active:cursor-grabbing hover:border-gray-700 transition-all ${
-        isExpanded ? 'ring-1 ring-cyan-900/50' : ''
-      }`}
+      className={`group relative bg-black/50 border rounded-md p-2.5 transition-all ${
+        isClaimedByOther
+          ? 'border-orange-800/50 cursor-not-allowed opacity-80'
+          : isClaimedByMe
+          ? 'border-cyan-800/50 cursor-grab active:cursor-grabbing hover:border-cyan-700'
+          : 'border-gray-800 cursor-grab active:cursor-grabbing hover:border-gray-700'
+      } ${isExpanded ? 'ring-1 ring-cyan-900/50' : ''}`}
     >
       <div className="flex items-start gap-2">
         <div className="flex flex-col items-center gap-1 pt-0.5">
@@ -725,9 +811,20 @@ function TaskCard({
                   className="bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-[10px] text-gray-300 focus:outline-none flex-1"
                 >
                   <option value="">Unassigned</option>
-                  {agents.map(a => (
-                    <option key={a.name} value={a.name}>{a.name}</option>
-                  ))}
+                  {[...agents]
+                    .sort((a, b) => {
+                      const aMatch = a.capabilities?.filter(c => task.tags.includes(c)).length || 0;
+                      const bMatch = b.capabilities?.filter(c => task.tags.includes(c)).length || 0;
+                      return bMatch - aMatch;
+                    })
+                    .map(a => {
+                      const matchCount = a.capabilities?.filter(c => task.tags.includes(c)).length || 0;
+                      return (
+                        <option key={a.name} value={a.name}>
+                          {matchCount > 0 ? '★ ' : ''}{a.name}{a.capabilities && a.capabilities.length > 0 ? ` [${a.capabilities.slice(0, 2).join(', ')}]` : ''}
+                        </option>
+                      );
+                    })}
                 </select>
               </div>
               <input
@@ -795,9 +892,25 @@ function TaskCard({
                 </div>
               )}
 
+              {/* Claim badges */}
+              {isClaimedByMe && (
+                <div className="flex items-center gap-1 mt-1.5">
+                  <span className="text-[9px] px-1.5 py-0.5 rounded border border-cyan-700 bg-cyan-950/30 text-cyan-400 font-bold tracking-wider flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5" /> CLAIMED BY YOU
+                  </span>
+                </div>
+              )}
+              {isClaimedByOther && (
+                <div className="flex items-center gap-1 mt-1.5">
+                  <span className="text-[9px] px-1.5 py-0.5 rounded border border-orange-700 bg-orange-950/30 text-orange-400 font-bold tracking-wider flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5" /> CLAIMED
+                  </span>
+                </div>
+              )}
+
               {/* Footer with assignee presence dot */}
               <div className="flex items-center justify-between mt-2">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   {task.assignee && (
                     <span className="text-[10px] text-cyan-600 flex items-center gap-1">
                       <div className="relative">
@@ -807,8 +920,15 @@ function TaskCard({
                         }`} />
                       </div>
                       {task.assignee}
+                      {task.claimedBy && <Lock className="w-2 h-2 text-gray-500" />}
                     </span>
                   )}
+                  {/* Assignee capability badges */}
+                  {assigneeCaps.map(cap => (
+                    <span key={cap} className="text-[8px] px-1 py-0.5 rounded bg-cyan-950/30 text-cyan-600 border border-cyan-900/30">
+                      {cap}
+                    </span>
+                  ))}
                   <span className={`text-[9px] px-1.5 py-0.5 rounded border ${pri.color}`}>
                     {pri.label}
                   </span>
@@ -831,6 +951,52 @@ function TaskCard({
                       <span>{comments.length || commentCount}</span>
                     )}
                   </button>
+
+                  {/* Claim/Unclaim buttons */}
+                  {isClaimable && (
+                    <button
+                      onClick={e => { e.stopPropagation(); handleClaim(); }}
+                      disabled={claiming}
+                      className="text-yellow-600 hover:text-yellow-400 transition-colors p-0.5"
+                      title="Claim this task"
+                    >
+                      <Zap className="w-3 h-3" />
+                    </button>
+                  )}
+                  {isClaimedByMe && (
+                    <button
+                      onClick={e => { e.stopPropagation(); handleUnclaim(); }}
+                      disabled={claiming}
+                      className="text-cyan-600 hover:text-cyan-400 transition-colors p-0.5"
+                      title="Unclaim this task"
+                    >
+                      <Unlock className="w-3 h-3" />
+                    </button>
+                  )}
+
+                  {/* Claim / Release buttons */}
+                  {isClaimable && (
+                    <button
+                      onClick={e => { e.stopPropagation(); handleClaim(); }}
+                      disabled={claiming}
+                      className="text-[9px] px-1.5 py-0.5 rounded border border-cyan-800 text-cyan-400 hover:bg-cyan-950/30 transition-all flex items-center gap-0.5 disabled:opacity-40"
+                      title="Claim this task"
+                    >
+                      {claiming ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Lock className="w-2.5 h-2.5" />}
+                      CLAIM
+                    </button>
+                  )}
+                  {isClaimedByMe && (
+                    <button
+                      onClick={e => { e.stopPropagation(); handleUnclaim(); }}
+                      disabled={claiming}
+                      className="text-[9px] px-1.5 py-0.5 rounded border border-orange-800 text-orange-400 hover:bg-orange-950/30 transition-all flex items-center gap-0.5 disabled:opacity-40"
+                      title="Release this task"
+                    >
+                      {claiming ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Unlock className="w-2.5 h-2.5" />}
+                      RELEASE
+                    </button>
+                  )}
 
                   {/* Actions (visible on hover) */}
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1039,9 +1205,22 @@ function AddTaskModal({ column, agents, onAdd, onClose }: AddTaskModalProps) {
                 className="w-full bg-black border border-gray-800 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-cyan-700"
               >
                 <option value="">None</option>
-                {agents.map(a => (
-                  <option key={a.name} value={a.name}>{a.name}</option>
-                ))}
+                {[...agents]
+                  .sort((a, b) => {
+                    const parsedTags = tags.split(',').map(t => t.trim()).filter(Boolean);
+                    const aMatch = a.capabilities?.filter(c => parsedTags.includes(c)).length || 0;
+                    const bMatch = b.capabilities?.filter(c => parsedTags.includes(c)).length || 0;
+                    return bMatch - aMatch;
+                  })
+                  .map(a => {
+                    const parsedTags = tags.split(',').map(t => t.trim()).filter(Boolean);
+                    const matchCount = a.capabilities?.filter(c => parsedTags.includes(c)).length || 0;
+                    return (
+                      <option key={a.name} value={a.name}>
+                        {matchCount > 0 ? '★ ' : ''}{a.name}{a.capabilities && a.capabilities.length > 0 ? ` [${a.capabilities.slice(0, 3).join(', ')}]` : ''}
+                      </option>
+                    );
+                  })}
               </select>
             </div>
             <div>

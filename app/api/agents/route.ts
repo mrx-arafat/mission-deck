@@ -30,6 +30,7 @@ export async function GET() {
         name: true,
         role: true,
         status: true,
+        capabilities: true,
         updatedAt: true,
         createdAt: true,
       },

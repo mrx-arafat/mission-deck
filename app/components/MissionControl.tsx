@@ -30,6 +30,7 @@ interface AgentInfo {
   name: string;
   role: string;
   status: string;
+  capabilities?: string[];
   updatedAt?: string;
 }
 
@@ -243,9 +244,14 @@ export default function MissionControl() {
             <div className="hidden md:flex items-center gap-1.5 ml-4 border border-green-900/30 px-2.5 py-1 rounded bg-green-950/10">
               <span className="text-[9px] text-gray-500 uppercase tracking-wider mr-1">Online:</span>
               {agentsOnline.map(a => (
-                <div key={a.id} className="flex items-center gap-1" title={`${a.name} (${a.role})`}>
+                <div key={a.id} className="flex items-center gap-1" title={`${a.name} (${a.role})${a.capabilities?.length ? ' — ' + a.capabilities.join(', ') : ''}`}>
                   <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
                   <span className="text-[10px] text-green-400">{a.name}</span>
+                  {a.capabilities && a.capabilities.slice(0, 2).map(cap => (
+                    <span key={cap} className="text-[8px] px-1 py-0.5 rounded bg-cyan-950/30 text-cyan-500 border border-cyan-900/30">
+                      {cap}
+                    </span>
+                  ))}
                 </div>
               ))}
             </div>

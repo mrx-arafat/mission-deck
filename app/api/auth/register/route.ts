@@ -4,7 +4,7 @@ import { hashPassword, getCurrentAgent } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
   try {
-    const { username, password, name, role } = await req.json();
+    const { username, password, name, role, capabilities } = await req.json();
 
     if (!username || !password || !name) {
       return NextResponse.json(
@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
         password: hashedPassword,
         name,
         role: agentCount === 0 ? 'admin' : (role || 'agent'),
+        capabilities: Array.isArray(capabilities) ? capabilities : [],
       },
       select: {
         id: true,

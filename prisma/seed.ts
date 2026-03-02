@@ -15,13 +15,14 @@ async function main() {
   const axisPassword = await bcrypt.hash('axis@69', 10);
   const axis = await prisma.agent.upsert({
     where: { username: 'axis' },
-    update: { password: axisPassword },
+    update: { password: axisPassword, capabilities: ['orchestration', 'backend', 'security', 'devops', 'code-review'] },
     create: {
       username: 'axis',
       password: axisPassword,
       name: 'AXIS',
       role: 'admin',
       status: 'offline',
+      capabilities: ['orchestration', 'backend', 'security', 'devops', 'code-review'],
     },
   });
   console.log(`Created agent: ${axis.name} (${axis.role})`);
@@ -30,13 +31,14 @@ async function main() {
   const moxyPassword = await bcrypt.hash('moxy@69', 10);
   const moxy = await prisma.agent.upsert({
     where: { username: 'moxy' },
-    update: { password: moxyPassword },
+    update: { password: moxyPassword, capabilities: ['frontend', 'ui-design', 'testing', 'documentation'] },
     create: {
       username: 'moxy',
       password: moxyPassword,
       name: 'MOXY',
       role: 'agent',
       status: 'offline',
+      capabilities: ['frontend', 'ui-design', 'testing', 'documentation'],
     },
   });
   console.log(`Created agent: ${moxy.name} (${moxy.role})`);

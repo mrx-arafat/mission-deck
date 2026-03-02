@@ -10,6 +10,8 @@ export const EVENTS = {
   AGENT_STATUS: 'agent-status-changed',
   NEW_NOTIFICATION: 'new-notification',
   NEW_COMMENT: 'new-comment',
+  TASK_CLAIMED: 'task-claimed',
+  TASK_UNCLAIMED: 'task-unclaimed',
 } as const;
 
 // Check if Pusher is configured

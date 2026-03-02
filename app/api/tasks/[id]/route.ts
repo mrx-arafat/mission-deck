@@ -23,6 +23,14 @@ export async function PATCH(
       return NextResponse.json({ error: 'Task not found' }, { status: 404 });
     }
 
+    // Check claim lock: if claimed by someone else and not admin, reject
+    if (currentTask.claimedBy && currentTask.claimedBy !== agent.id && agent.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Task is claimed by another agent' },
+        { status: 403 }
+      );
+    }
+
     // Build update data from only provided fields
     const data: Record<string, unknown> = {};
     if (body.title !== undefined) data.title = body.title.trim();
@@ -31,6 +39,27 @@ export async function PATCH(
     if (body.priority !== undefined) data.priority = body.priority;
     if (body.column !== undefined) data.column = body.column;
     if (body.tags !== undefined) data.tags = body.tags;
+
+    // When task moves to "done", auto-clear claim
+    if (body.column === 'done') {
+      data.claimedBy = null;
+      data.claimedAt = null;
+    }
+
+    // When assignee changes, update claimedBy to match new assignee's agent ID
+    if (body.assignee !== undefined && body.assignee !== currentTask.assignee) {
+      if (body.assignee) {
+        const newAssigneeAgent = await prisma.agent.findFirst({ where: { name: body.assignee } });
+        if (newAssigneeAgent) {
+          data.claimedBy = newAssigneeAgent.id;
+          data.claimedAt = new Date();
+        }
+      } else {
+        // Assignee cleared — also clear claim
+        data.claimedBy = null;
+        data.claimedAt = null;
+      }
+    }
 
     const task = await prisma.task.update({
       where: { id },
