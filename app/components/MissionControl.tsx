@@ -10,17 +10,38 @@ import {
   Shield,
   UserPlus,
   Loader2,
-  GripVertical,
+  Bell,
+  CheckCheck,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import KanbanBoard from './KanbanBoard';
 import ChatPanel from './ChatPanel';
 import { useAuth } from './AuthProvider';
+import { getPusherClient, CHAT_CHANNEL, EVENTS } from '@/lib/pusher';
 
 const CHAT_MIN_WIDTH = 280;
 const CHAT_MAX_WIDTH = 600;
 const CHAT_DEFAULT_WIDTH = 360;
 const STORAGE_KEY = 'mission-deck-chat-width';
+
+interface AgentInfo {
+  id: string;
+  username: string;
+  name: string;
+  role: string;
+  status: string;
+  updatedAt?: string;
+}
+
+interface Notification {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  taskId?: string;
+  read: boolean;
+  createdAt: string;
+}
 
 function getStoredWidth(): number {
   if (typeof window === 'undefined') return CHAT_DEFAULT_WIDTH;
@@ -41,6 +62,94 @@ export default function MissionControl() {
   const [isResizing, setIsResizing] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  // Agent presence
+  const [onlineAgents, setOnlineAgents] = useState<AgentInfo[]>([]);
+
+  // Notifications
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  // Fetch agents periodically for presence
+  useEffect(() => {
+    if (!agent) return;
+    fetchAgents();
+    const interval = setInterval(fetchAgents, 30000); // every 30s
+    return () => clearInterval(interval);
+  }, [agent]);
+
+  async function fetchAgents() {
+    try {
+      const res = await fetch('/api/agents');
+      if (res.ok) {
+        const data = await res.json();
+        setOnlineAgents(data.agents || []);
+      }
+    } catch {}
+  }
+
+  // Fetch notifications
+  useEffect(() => {
+    if (!agent) return;
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [agent]);
+
+  async function fetchNotifications() {
+    try {
+      const res = await fetch('/api/notifications');
+      if (res.ok) {
+        const data = await res.json();
+        setNotifications(data.notifications || []);
+        setUnreadCount(data.unreadCount || 0);
+      }
+    } catch {}
+  }
+
+  // Pusher real-time notifications
+  useEffect(() => {
+    const pusher = getPusherClient();
+    if (!pusher || !agent) return;
+
+    const channel = pusher.subscribe(CHAT_CHANNEL);
+    channel.bind(EVENTS.NEW_NOTIFICATION, (data: { agentId: string; type: string; title: string; message: string; taskId?: string }) => {
+      if (data.agentId === agent.id) {
+        // Add to local state immediately
+        setNotifications(prev => [{
+          id: Date.now().toString(),
+          type: data.type,
+          title: data.title,
+          message: data.message,
+          taskId: data.taskId,
+          read: false,
+          createdAt: new Date().toISOString(),
+        }, ...prev]);
+        setUnreadCount(prev => prev + 1);
+      }
+    });
+
+    return () => {
+      channel.unbind(EVENTS.NEW_NOTIFICATION);
+    };
+  }, [agent]);
+
+  async function markNotificationRead(id: string) {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    setUnreadCount(prev => Math.max(0, prev - 1));
+    try {
+      await fetch(`/api/notifications/${id}`, { method: 'PATCH' });
+    } catch {}
+  }
+
+  async function markAllRead() {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setUnreadCount(0);
+    try {
+      await fetch('/api/notifications/mark-all-read', { method: 'POST' });
+    } catch {}
+  }
 
   // Hydrate stored width + detect mobile
   useEffect(() => {
@@ -71,7 +180,6 @@ export default function MissionControl() {
     const handleMove = (e: MouseEvent | TouchEvent) => {
       if (!resizeRef.current) return;
       const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-      // Dragging left = increase chat width (panel is on the right)
       const delta = resizeRef.current.startX - clientX;
       const newWidth = Math.min(
         CHAT_MAX_WIDTH,
@@ -83,7 +191,6 @@ export default function MissionControl() {
     const handleEnd = () => {
       setIsResizing(false);
       resizeRef.current = null;
-      // Persist
       localStorage.setItem(STORAGE_KEY, String(chatWidth));
     };
 
@@ -91,8 +198,6 @@ export default function MissionControl() {
     document.addEventListener('mouseup', handleEnd);
     document.addEventListener('touchmove', handleMove);
     document.addEventListener('touchend', handleEnd);
-
-    // Prevent text selection while dragging
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
 
@@ -106,7 +211,6 @@ export default function MissionControl() {
     };
   }, [isResizing, chatWidth]);
 
-  // Persist width on change (debounced via resize end)
   useEffect(() => {
     if (!isResizing) {
       localStorage.setItem(STORAGE_KEY, String(chatWidth));
@@ -114,6 +218,7 @@ export default function MissionControl() {
   }, [chatWidth, isResizing]);
 
   const isAdmin = agent?.role === 'admin';
+  const agentsOnline = onlineAgents.filter(a => a.status === 'online');
 
   return (
     <div className="min-h-screen h-screen bg-black text-green-500 font-mono relative overflow-hidden selection:bg-cyan-900 selection:text-cyan-100 flex flex-col">
@@ -132,7 +237,21 @@ export default function MissionControl() {
             <h1 className="text-xl font-bold tracking-[0.3em] text-cyan-50 glow-text">AXIS</h1>
             <p className="text-[10px] text-green-600 tracking-[0.4em]">MISSION CONTROL</p>
           </div>
+
+          {/* Agent Presence Indicators */}
+          {agentsOnline.length > 0 && (
+            <div className="hidden md:flex items-center gap-1.5 ml-4 border border-green-900/30 px-2.5 py-1 rounded bg-green-950/10">
+              <span className="text-[9px] text-gray-500 uppercase tracking-wider mr-1">Online:</span>
+              {agentsOnline.map(a => (
+                <div key={a.id} className="flex items-center gap-1" title={`${a.name} (${a.role})`}>
+                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                  <span className="text-[10px] text-green-400">{a.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
+
         <div className="flex items-center gap-2 md:gap-4 text-xs">
           {/* Current Agent Info */}
           {agent && (
@@ -142,6 +261,80 @@ export default function MissionControl() {
               {isAdmin && <Shield className="w-3 h-3 text-yellow-600" />}
             </div>
           )}
+
+          {/* Notification Bell */}
+          <div className="relative">
+            <button
+              onClick={() => setShowNotifications(!showNotifications)}
+              className={`flex items-center gap-1.5 px-2 md:px-3 py-1 rounded border transition-all relative ${
+                showNotifications
+                  ? 'border-cyan-700 text-cyan-400 bg-cyan-950/20'
+                  : 'border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700'
+              }`}
+            >
+              <Bell className="w-3.5 h-3.5" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center animate-pulse">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+
+            {/* Notification Dropdown */}
+            <AnimatePresence>
+              {showNotifications && (
+                <motion.div
+                  initial={{ opacity: 0, y: -5, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -5, scale: 0.95 }}
+                  className="absolute right-0 top-full mt-2 w-80 max-h-96 bg-gray-950 border border-cyan-900/50 rounded-lg shadow-2xl shadow-cyan-900/10 overflow-hidden z-50"
+                >
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800">
+                    <span className="text-[11px] font-bold text-cyan-400 tracking-wider">NOTIFICATIONS</span>
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={markAllRead}
+                        className="text-[10px] text-gray-500 hover:text-cyan-400 flex items-center gap-1 transition-colors"
+                      >
+                        <CheckCheck className="w-3 h-3" /> Mark all read
+                      </button>
+                    )}
+                  </div>
+                  <div className="overflow-y-auto max-h-80">
+                    {notifications.length === 0 ? (
+                      <div className="text-center py-8 text-gray-600 text-xs">No notifications</div>
+                    ) : (
+                      notifications.slice(0, 20).map(notif => (
+                        <div
+                          key={notif.id}
+                          onClick={() => !notif.read && markNotificationRead(notif.id)}
+                          className={`px-3 py-2.5 border-b border-gray-800/50 cursor-pointer hover:bg-gray-900/50 transition-colors ${
+                            !notif.read ? 'bg-cyan-950/10 border-l-2 border-l-cyan-600' : ''
+                          }`}
+                        >
+                          <div className="flex items-start gap-2">
+                            <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
+                              notif.type === 'task_assigned' ? 'bg-cyan-500' :
+                              notif.type === 'task_completed' ? 'bg-green-500' :
+                              notif.type === 'task_updated' ? 'bg-purple-500' :
+                              'bg-yellow-500'
+                            }`} />
+                            <div className="min-w-0 flex-1">
+                              <div className="text-[11px] font-medium text-gray-200">{notif.title}</div>
+                              <div className="text-[10px] text-gray-500 mt-0.5">{notif.message}</div>
+                              <div className="text-[9px] text-gray-700 mt-1">
+                                {new Date(notif.createdAt).toLocaleString()}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
           {/* Chat Toggle */}
           <button
@@ -188,13 +381,12 @@ export default function MissionControl() {
       <div className="flex-1 flex overflow-hidden relative z-0">
         {/* Kanban Board */}
         <main className="flex-1 flex flex-col overflow-hidden p-2 md:p-4">
-          <KanbanBoard />
+          <KanbanBoard onlineAgents={onlineAgents} />
         </main>
 
         {/* --- DESKTOP: Side panel with resize handle --- */}
         {!isMobile && chatOpen && (
           <>
-            {/* Resize Handle */}
             <div
               onMouseDown={handleResizeStart}
               onTouchStart={handleResizeStart}
@@ -207,8 +399,6 @@ export default function MissionControl() {
                 isResizing ? 'bg-cyan-500' : 'bg-gray-700 group-hover:bg-cyan-600'
               }`} />
             </div>
-
-            {/* Chat Panel */}
             <div
               className="shrink-0 overflow-hidden relative"
               style={{ width: chatWidth }}
@@ -229,7 +419,6 @@ export default function MissionControl() {
                 transition={{ type: 'spring', damping: 25, stiffness: 300 }}
                 className="absolute inset-0 z-20 bg-black"
               >
-                {/* Mobile chat close button */}
                 <div className="absolute top-2 right-2 z-30">
                   <button
                     onClick={() => setChatOpen(false)}
@@ -244,6 +433,11 @@ export default function MissionControl() {
           </AnimatePresence>
         )}
       </div>
+
+      {/* Close notification dropdown on outside click */}
+      {showNotifications && (
+        <div className="fixed inset-0 z-[9]" onClick={() => setShowNotifications(false)} />
+      )}
 
       {/* Register Agent Modal (Admin) */}
       <AnimatePresence>

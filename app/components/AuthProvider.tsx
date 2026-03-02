@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 
 interface Agent {
   id: string;
@@ -20,13 +20,47 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const HEARTBEAT_INTERVAL = 2 * 60 * 1000; // 2 minutes
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
+  const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     checkAuth();
   }, []);
+
+  // Heartbeat: send every 2 minutes while authenticated
+  useEffect(() => {
+    if (!agent) {
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
+      return;
+    }
+
+    // Send initial heartbeat on login
+    sendHeartbeat();
+
+    heartbeatRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
+
+    return () => {
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
+    };
+  }, [agent]);
+
+  async function sendHeartbeat() {
+    try {
+      await fetch('/api/agents/heartbeat', { method: 'POST' });
+    } catch {
+      // Silently fail
+    }
+  }
 
   async function checkAuth() {
     try {
@@ -70,7 +104,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Ignore errors
     }
     setAgent(null);
-    // Force a clean navigation to login page
     window.location.href = '/login';
   }, []);
 

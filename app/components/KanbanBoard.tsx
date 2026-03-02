@@ -18,7 +18,11 @@ import {
   Filter,
   Search,
   Loader2,
+  MessageCircle,
+  Send,
 } from 'lucide-react';
+import { useAuth } from './AuthProvider';
+import { getPusherClient, CHAT_CHANNEL, EVENTS } from '@/lib/pusher';
 
 // --- Types ---
 export type Priority = 'critical' | 'high' | 'medium' | 'low';
@@ -34,6 +38,23 @@ export interface KanbanTask {
   tags: string[];
   createdAt: string;
   updatedAt: string;
+}
+
+interface AgentInfo {
+  id: string;
+  username: string;
+  name: string;
+  role: string;
+  status: string;
+}
+
+interface Comment {
+  id: string;
+  content: string;
+  taskId: string;
+  agentId: string;
+  agent: { id: string; name: string; username: string };
+  createdAt: string;
 }
 
 interface Column {
@@ -103,9 +124,13 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string; dot: strin
 };
 
 // --- Component ---
-export default function KanbanBoard() {
+interface KanbanBoardProps {
+  onlineAgents?: AgentInfo[];
+}
+
+export default function KanbanBoard({ onlineAgents = [] }: KanbanBoardProps) {
   const [tasks, setTasks] = useState<KanbanTask[]>([]);
-  const [agents, setAgents] = useState<{ name: string }[]>([]);
+  const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<ColumnId | null>(null);
@@ -117,7 +142,14 @@ export default function KanbanBoard() {
   const [filterAssignee, setFilterAssignee] = useState<string | 'all'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const dragCounter = useRef(0);
+
+  // Build a map of agent name -> online status
+  const agentStatusMap = useCallback((name: string) => {
+    const found = onlineAgents.find(a => a.name === name);
+    return found?.status === 'online';
+  }, [onlineAgents]);
 
   // --- Fetch tasks from DB ---
   useEffect(() => {
@@ -195,13 +227,11 @@ export default function KanbanBoard() {
     e.preventDefault();
     const taskId = e.dataTransfer.getData('text/plain');
     if (taskId) {
-      // Optimistic update
       setTasks(prev =>
         prev.map(t =>
           t.id === taskId ? { ...t, column: columnId } : t
         )
       );
-      // Persist to DB
       try {
         await fetch(`/api/tasks/${taskId}`, {
           method: 'PATCH',
@@ -217,7 +247,7 @@ export default function KanbanBoard() {
     dragCounter.current = 0;
   }, []);
 
-  // --- CRUD (all synced to DB) ---
+  // --- CRUD ---
   const addTask = useCallback(async (task: Omit<KanbanTask, 'id' | 'createdAt' | 'updatedAt'>) => {
     try {
       const res = await fetch('/api/tasks', {
@@ -235,13 +265,11 @@ export default function KanbanBoard() {
   }, []);
 
   const updateTask = useCallback(async (taskId: string, updates: Partial<KanbanTask>) => {
-    // Optimistic update
     setTasks(prev =>
       prev.map(t =>
         t.id === taskId ? { ...t, ...updates } : t
       )
     );
-    // Persist to DB
     try {
       await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
@@ -254,17 +282,20 @@ export default function KanbanBoard() {
   }, []);
 
   const deleteTask = useCallback(async (taskId: string) => {
-    // Optimistic update
     setTasks(prev => prev.filter(t => t.id !== taskId));
     if (editingTask === taskId) setEditingTask(null);
     if (expandedTask === taskId) setExpandedTask(null);
-    // Persist to DB
     try {
       await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
     } catch (err) {
       console.error('Failed to delete task:', err);
     }
   }, [editingTask, expandedTask]);
+
+  // Update comment count
+  const updateCommentCount = useCallback((taskId: string, count: number) => {
+    setCommentCounts(prev => ({ ...prev, [taskId]: count }));
+  }, []);
 
   // --- Filtering ---
   const filteredTasks = tasks.filter(task => {
@@ -312,7 +343,6 @@ export default function KanbanBoard() {
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-2 md:gap-3 mb-3 md:mb-4 flex-wrap">
         <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
-          {/* Search */}
           <div className="relative flex-1 max-w-xs">
             <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-gray-500" />
             <input
@@ -324,7 +354,6 @@ export default function KanbanBoard() {
             />
           </div>
 
-          {/* Filter Toggle */}
           <button
             onClick={() => setShowFilters(!showFilters)}
             className={`flex items-center gap-1.5 text-xs border rounded px-2 md:px-2.5 py-1.5 transition-all shrink-0 ${
@@ -341,7 +370,6 @@ export default function KanbanBoard() {
           </button>
         </div>
 
-        {/* Stats */}
         <div className="flex items-center gap-2 md:gap-3 text-[10px] text-gray-500 shrink-0">
           <span>{completedTasks}/{totalTasks} COMPLETE</span>
           <div className="w-16 md:w-20 h-1.5 bg-gray-800 rounded-full overflow-hidden">
@@ -423,7 +451,6 @@ export default function KanbanBoard() {
               onDragOver={handleDragOver}
               onDrop={e => handleDrop(e, column.id)}
             >
-              {/* Column Header */}
               <div className={`flex items-center justify-between px-3 py-2.5 border-b ${column.borderColor} bg-black/30 rounded-t-lg`}>
                 <div className={`flex items-center gap-2 ${column.color}`}>
                   {column.icon}
@@ -446,7 +473,6 @@ export default function KanbanBoard() {
                 </div>
               </div>
 
-              {/* Tasks */}
               <div className="flex-1 overflow-y-auto p-2 space-y-2 kanban-column-scroll">
                 <AnimatePresence mode="popLayout">
                   {columnTasks.map(task => (
@@ -457,12 +483,15 @@ export default function KanbanBoard() {
                       isEditing={editingTask === task.id}
                       isExpanded={expandedTask === task.id}
                       isDragging={draggedTask === task.id}
+                      isAssigneeOnline={task.assignee ? agentStatusMap(task.assignee) : false}
+                      commentCount={commentCounts[task.id] || 0}
                       onDragStart={handleDragStart}
                       onDragEnd={handleDragEnd}
                       onEdit={() => setEditingTask(editingTask === task.id ? null : task.id)}
                       onExpand={() => setExpandedTask(expandedTask === task.id ? null : task.id)}
                       onUpdate={updateTask}
                       onDelete={deleteTask}
+                      onCommentCountUpdate={updateCommentCount}
                     />
                   ))}
                 </AnimatePresence>
@@ -480,7 +509,6 @@ export default function KanbanBoard() {
         })}
       </div>
 
-      {/* Add Task Modal */}
       <AnimatePresence>
         {showAddModal && (
           <AddTaskModal
@@ -501,16 +529,19 @@ export default function KanbanBoard() {
 // --- Task Card ---
 interface TaskCardProps {
   task: KanbanTask;
-  agents: { name: string }[];
+  agents: AgentInfo[];
   isEditing: boolean;
   isExpanded: boolean;
   isDragging: boolean;
+  isAssigneeOnline: boolean;
+  commentCount: number;
   onDragStart: (e: React.DragEvent, id: string) => void;
   onDragEnd: (e: React.DragEvent) => void;
   onEdit: () => void;
   onExpand: () => void;
   onUpdate: (id: string, updates: Partial<KanbanTask>) => void;
   onDelete: (id: string) => void;
+  onCommentCountUpdate: (taskId: string, count: number) => void;
 }
 
 function TaskCard({
@@ -519,20 +550,102 @@ function TaskCard({
   isEditing,
   isExpanded,
   isDragging,
+  isAssigneeOnline,
+  commentCount,
   onDragStart,
   onDragEnd,
   onEdit,
   onExpand,
   onUpdate,
   onDelete,
+  onCommentCountUpdate,
 }: TaskCardProps) {
+  const { agent: currentAgent } = useAuth();
   const [editTitle, setEditTitle] = useState(task.title);
   const [editDescription, setEditDescription] = useState(task.description || '');
   const [editPriority, setEditPriority] = useState(task.priority);
   const [editAssignee, setEditAssignee] = useState(task.assignee || '');
   const [editTags, setEditTags] = useState(task.tags.join(', '));
 
+  // Comments state
+  const [showComments, setShowComments] = useState(false);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [newComment, setNewComment] = useState('');
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [submittingComment, setSubmittingComment] = useState(false);
+
   const pri = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.medium;
+
+  // Fetch comments when expanded
+  useEffect(() => {
+    if (showComments) {
+      fetchComments();
+    }
+  }, [showComments]);
+
+  // Real-time comment updates via Pusher
+  useEffect(() => {
+    if (!showComments) return;
+    const pusher = getPusherClient();
+    if (!pusher) return;
+
+    const channel = pusher.subscribe(CHAT_CHANNEL);
+    const handler = (data: { taskId: string; comment: Comment }) => {
+      if (data.taskId === task.id) {
+        setComments(prev => {
+          // Avoid duplicates
+          if (prev.find(c => c.id === data.comment.id)) return prev;
+          return [...prev, data.comment];
+        });
+        onCommentCountUpdate(task.id, comments.length + 1);
+      }
+    };
+    channel.bind(EVENTS.NEW_COMMENT, handler);
+    return () => { channel.unbind(EVENTS.NEW_COMMENT, handler); };
+  }, [showComments, task.id, comments.length]);
+
+  async function fetchComments() {
+    setLoadingComments(true);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}/comments`);
+      if (res.ok) {
+        const data = await res.json();
+        setComments(data.comments || []);
+        onCommentCountUpdate(task.id, data.comments?.length || 0);
+      }
+    } catch {} finally {
+      setLoadingComments(false);
+    }
+  }
+
+  async function submitComment(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newComment.trim() || submittingComment) return;
+    setSubmittingComment(true);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: newComment.trim() }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setComments(prev => [...prev, data.comment]);
+        onCommentCountUpdate(task.id, comments.length + 1);
+        setNewComment('');
+      }
+    } catch {} finally {
+      setSubmittingComment(false);
+    }
+  }
+
+  async function deleteComment(commentId: string) {
+    setComments(prev => prev.filter(c => c.id !== commentId));
+    onCommentCountUpdate(task.id, Math.max(0, comments.length - 1));
+    try {
+      await fetch(`/api/tasks/${task.id}/comments/${commentId}`, { method: 'DELETE' });
+    } catch {}
+  }
 
   const saveEdit = () => {
     onUpdate(task.id, {
@@ -573,7 +686,6 @@ function TaskCard({
         isExpanded ? 'ring-1 ring-cyan-900/50' : ''
       }`}
     >
-      {/* Drag Handle + Priority Dot */}
       <div className="flex items-start gap-2">
         <div className="flex flex-col items-center gap-1 pt-0.5">
           <GripVertical className="w-3 h-3 text-gray-700 group-hover:text-gray-500" />
@@ -582,7 +694,6 @@ function TaskCard({
 
         <div className="flex-1 min-w-0">
           {isEditing ? (
-            /* Edit Mode */
             <div className="space-y-2">
               <input
                 value={editTitle}
@@ -641,7 +752,6 @@ function TaskCard({
               </div>
             </div>
           ) : (
-            /* View Mode */
             <>
               <div
                 className="text-xs font-medium text-gray-200 leading-snug cursor-pointer hover:text-cyan-300 transition-colors"
@@ -650,7 +760,6 @@ function TaskCard({
                 {task.title}
               </div>
 
-              {/* Expanded Details */}
               <AnimatePresence>
                 {isExpanded && (
                   <motion.div
@@ -673,7 +782,6 @@ function TaskCard({
                 )}
               </AnimatePresence>
 
-              {/* Tags */}
               {task.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-1.5">
                   {task.tags.map(tag => (
@@ -687,12 +795,17 @@ function TaskCard({
                 </div>
               )}
 
-              {/* Footer */}
+              {/* Footer with assignee presence dot */}
               <div className="flex items-center justify-between mt-2">
                 <div className="flex items-center gap-1.5">
                   {task.assignee && (
                     <span className="text-[10px] text-cyan-600 flex items-center gap-1">
-                      <User className="w-2.5 h-2.5" />
+                      <div className="relative">
+                        <User className="w-2.5 h-2.5" />
+                        <div className={`absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full border border-black ${
+                          isAssigneeOnline ? 'bg-green-500' : 'bg-gray-600'
+                        }`} />
+                      </div>
                       {task.assignee}
                     </span>
                   )}
@@ -701,30 +814,121 @@ function TaskCard({
                   </span>
                 </div>
 
-                {/* Actions (visible on hover) */}
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex gap-1 items-center">
+                  {/* Comment count indicator */}
                   <button
                     onClick={e => {
                       e.stopPropagation();
-                      onEdit();
+                      setShowComments(!showComments);
                     }}
-                    className="text-gray-600 hover:text-cyan-400 transition-colors p-0.5"
-                    title="Edit"
+                    className={`flex items-center gap-0.5 text-[10px] p-0.5 transition-colors ${
+                      showComments ? 'text-cyan-400' : 'text-gray-600 hover:text-gray-400'
+                    }`}
+                    title="Comments"
                   >
-                    <Edit3 className="w-3 h-3" />
+                    <MessageCircle className="w-3 h-3" />
+                    {(commentCount > 0 || comments.length > 0) && (
+                      <span>{comments.length || commentCount}</span>
+                    )}
                   </button>
-                  <button
-                    onClick={e => {
-                      e.stopPropagation();
-                      onDelete(task.id);
-                    }}
-                    className="text-gray-600 hover:text-red-400 transition-colors p-0.5"
-                    title="Delete"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+
+                  {/* Actions (visible on hover) */}
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        onEdit();
+                      }}
+                      className="text-gray-600 hover:text-cyan-400 transition-colors p-0.5"
+                      title="Edit"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        onDelete(task.id);
+                      }}
+                      className="text-gray-600 hover:text-red-400 transition-colors p-0.5"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
               </div>
+
+              {/* Comments Section */}
+              <AnimatePresence>
+                {showComments && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden mt-2 border-t border-gray-800 pt-2"
+                  >
+                    {loadingComments ? (
+                      <div className="flex justify-center py-2">
+                        <Loader2 className="w-3 h-3 animate-spin text-gray-600" />
+                      </div>
+                    ) : (
+                      <>
+                        {/* Comment list */}
+                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                          {comments.length === 0 ? (
+                            <div className="text-[9px] text-gray-700 text-center py-1">No comments yet</div>
+                          ) : (
+                            comments.map(comment => (
+                              <div key={comment.id} className="bg-gray-900/50 rounded px-2 py-1.5 group/comment">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] font-medium text-cyan-500">{comment.agent.name}</span>
+                                    <span className="text-[8px] text-gray-700">
+                                      {new Date(comment.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  </div>
+                                  {(currentAgent?.id === comment.agentId || currentAgent?.role === 'admin') && (
+                                    <button
+                                      onClick={() => deleteComment(comment.id)}
+                                      className="text-gray-700 hover:text-red-400 opacity-0 group-hover/comment:opacity-100 transition-all"
+                                    >
+                                      <X className="w-2.5 h-2.5" />
+                                    </button>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-gray-400 mt-0.5 leading-relaxed">{comment.content}</p>
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        {/* Add comment form */}
+                        <form onSubmit={submitComment} className="flex gap-1.5 mt-2">
+                          <input
+                            value={newComment}
+                            onChange={e => setNewComment(e.target.value)}
+                            placeholder="Add comment..."
+                            className="flex-1 bg-gray-900 border border-gray-800 rounded px-2 py-1 text-[10px] text-gray-300 focus:outline-none focus:border-cyan-800 placeholder:text-gray-700"
+                            onClick={e => e.stopPropagation()}
+                          />
+                          <button
+                            type="submit"
+                            disabled={submittingComment || !newComment.trim()}
+                            className="text-cyan-600 hover:text-cyan-400 disabled:text-gray-700 transition-colors p-1"
+                            onClick={e => e.stopPropagation()}
+                          >
+                            {submittingComment ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Send className="w-3 h-3" />
+                            )}
+                          </button>
+                        </form>
+                      </>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </>
           )}
         </div>
@@ -737,7 +941,7 @@ function TaskCard({
 // --- Add Task Modal ---
 interface AddTaskModalProps {
   column: ColumnId;
-  agents: { name: string }[];
+  agents: AgentInfo[];
   onAdd: (task: Omit<KanbanTask, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onClose: () => void;
 }

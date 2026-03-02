@@ -8,6 +8,8 @@ export const EVENTS = {
   NEW_MESSAGE: 'new-message',
   CHAT_CLEARED: 'chat-cleared',
   AGENT_STATUS: 'agent-status-changed',
+  NEW_NOTIFICATION: 'new-notification',
+  NEW_COMMENT: 'new-comment',
 } as const;
 
 // Check if Pusher is configured
